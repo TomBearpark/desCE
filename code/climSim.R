@@ -170,13 +170,23 @@ ggplot(df) + geom_point(aes(x = temp1, y = y, color = i))
 feols(y ~ temp1 + temp2, df)
 feols(y ~ temp1 + temp2 | i, df)
 
-# simulate ----------------------------------------------------------------
+# baseline ----------------------------------------------------------------
 
 args$Nsim <- 300
 args$sim.tag <- "Baseline"
 out.df <- do.call(map_sim, args)
 out.df %>% sim.density()
 sim.mean(out.df)
+
+# dependence of income and climate ----------------------------------------
+args.inc <- list_modify(
+  args, 
+  alpha_var = matrix(c(1,1,1,1), nrow = 2)
+)
+out.df.inc <- do.call(map_sim, args.inc)
+out.df.inc %>% sim.density()
+sim.mean(out.df)
+
 
 # het beta ----------------------------------------------------------------
 beta.het <- function(df) {
