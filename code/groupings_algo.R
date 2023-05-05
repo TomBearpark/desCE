@@ -29,11 +29,22 @@ feols(y ~ D, df, vcov = "hetero")
 feols(y ~ D + G, df, vcov = "hetero")
 feols(y ~ -1 + D + G + D*G, df, vcov = "hetero")
 
-df.obs <- df %>% select(y, D)
+
+
+
+df.obs <- df %>% select(i, y, D)
+
+df.obs$kk <- kmeans(df.obs$y, centers = 2)$cluster -1 
+
+feols(y ~ -1 + D + G + D*G, df, vcov = "hetero")
 
 # B&M ---------------------------------------------------------------------
 
+s=0
+beta=.9
+alpha=sample(c(0, 1), N, replace = TRUE)
 
+g1=
 
 
 # trying Gs ---------------------------------------------------------------
