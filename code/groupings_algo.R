@@ -15,7 +15,7 @@ df <- tibble(i = 1:N,
              G = sample(c(0, 1), N, replace = TRUE), 
              
              # Assign treatment, random conditional on. G
-             D = stats::rbinom(N, 1, 1 / (G + 1)), 
+             D = stats::rbinom(N, 1, 1 / (G + 2)), 
              
              # Calculate the potential outcomes 
              y0 = rnorm(N, mean = delta * G), 
@@ -36,81 +36,99 @@ df.obs <- df %>% select(i, y, D)
 
 # B&M ---------------------------------------------------------------------
 
-# Tolerance for convergence
-tol <- 0.0001
-div <- 100000
-# Matrices to store results in 
-max.iter <- 1000
-beta.mat  <- matrix(nrow = max.iter, ncol = 1)
-alpha.mat <- matrix(nrow = max.iter, ncol = 2)
-
-# 1. Initial guess
-
-s = 0
-beta.mat[1, ]  <- c(.9)
-alpha.mat[1, ] <- c(0,  1)
-
-
-while(div > tol){
+run_gfe <- function(beta.guess, 
+                    alpha.guess, 
+                    df.obs, 
+                    tol = 0.000000001, max.iter = 1000, verbose = FALSE){
   
-  s <- s + 1
+  # Matrices to store results in 
+  beta.mat  <- matrix(nrow = max.iter, ncol = 1)
+  alpha.mat <- matrix(nrow = max.iter, ncol = 2)
   
-  beta <- beta.mat[s, ]
-  alpha <- alpha.mat[s, ]
+  beta.mat[1, ]  <- beta.guess
+  alpha.mat[1, ] <- alpha.guess
   
-  # 2. Assignment step
-  df.obs$e1 = (df.obs$y - (beta[1]*df.obs$D + alpha[1]))^2
-  df.obs$e2 = (df.obs$y - (beta[1]*df.obs$D + alpha[2]))^2
+  div <- tol + 1
+  s   <-  0
   
-  df.obs$g  = ifelse(df.obs$e1 < df.obs$e2, 0, 1)
+  while(abs(div) > tol){
+    if(verbose) print(div)
+    s <- s + 1
+    if(s > max.iter) stop("failed")
+    
+    beta <- beta.mat[s, ]
+    alpha <- alpha.mat[s, ]
+    
+    # 2. Assignment step
+    df.obs$e1 <- (df.obs$y - (beta[1]*df.obs$D + alpha[1]))^2
+    df.obs$e2 <- (df.obs$y - (beta[1]*df.obs$D + alpha[2]))^2
+    
+    df.obs$g <- ifelse(df.obs$e1 < df.obs$e2, 0, 1)
+    
+    # 3. Update step 
+    m <- feols(y ~ D | g, data = df.obs)
+    
+    # Store new coefficients
+    beta.mat[s+1, ]  <- coef(m)[1]
+    alpha.mat[s+1, ] <- drop(fixest::fixef(m)$g)
+    
+    # Check how close we are to convergence 
+    div <- max(c(beta.mat[s,]-beta.mat[s+1,], alpha.mat[s,]-alpha.mat[s+1,]))
+  }
   
-  # 3. Update step 
-  m <- feols(y ~ D | g, data = df.obs)
+  beta.mat <- beta.mat[1:s+1, ]
   
-  # Store new coefficients
-  beta.mat[s+1, ]  <- coef(m)[1]
-  alpha.mat[s+1, ] <- drop(fixest::fixef(m)$g)
-  
-  # Check how close we are to convergence 
-  div <- max(c(beta.mat[s,]-beta.mat[s+1,], alpha.mat[s,]-alpha.mat[s+1,]))
-  print(div)
-  
+  return(list(div = div, df = df.obs, beta.mat = beta.mat))
 }
 
-plot(beta.mat[!is.na(beta.mat)])
+guess_params <- function(beta.params, alpha.params){
+  return(
+    list(
+      beta = rnorm(length(beta.params$mean), 
+                         beta.params$mean, beta.params$sd), 
+      alpha = rnorm(length(alpha.params$mean), 
+                          alpha.params$mean, alpha.params$sd)
+    )
+  )
+}
+
+run_guesses_gfe <- function(beta.params, alpha.params, 
+                            num.guesses = 100){
+  
+  attempts <- map(
+    1:num.guesses, 
+    function(ii){
+      message(paste0('guess number ', ii))
+      guess <- 
+        guess_params(beta.params = beta.params, alpha.params = alpha.params)
+      out <- run_gfe(guess$beta, guess$alpha, df.obs)
+      out
+    }
+  )
+  
+  attempts
+}
+
+# Code testing
+beta.params  = list(mean = 2, sd = 3)
+alpha.params = list(mean = c(0, 0), sd = c(3, 3))
+
+guess <- guess_params(beta.params, alpha.params)
+out   <- run_gfe(guess$beta, guess$alpha, df.obs)
+out$div
+
+# Overall run
+attempts <- run_guesses_gfe(beta.params, alpha.params)
+divs <- map_dbl(1:100, \(x) attempts[[x]]$div)
+divs[divs == min(divs)]
+
+map_dbl(1:100, 
+        \(x) attempts[[x]]$beta.mat[length(attempts[[x]]$beta.mat)]) %>% 
+  density %>% 
+  plot
+
+df.final <- which()
+
+feols(y ~ D , data = out$df)
 
 
-
-
-
-# Scraps from here onwards!
-# trying Gs ---------------------------------------------------------------
-
-
-df.obs$e <- feols(y ~ D, df.obs)$resid
-
-df$kk <- kmeans(df.obs$e, centers = 2)$cluster - 1
-feols(y ~ -1 + D + kk + D*kk, df, vcov = "hetero")
-feols(G ~ kk, df)
-
-
-plot(kk)
-
-# Candidate grouping vector
-df.obs$G.t <- sample(c(0, 1), N, replace = TRUE)
-
-# Calculate residuals
-m.tst <- feols(y ~ D + G.t, df.obs, vcov = "hetero")
-df.obs$resid <- m.tst$residuals
-
-# KS test on conditional distributions 
-g1d1 <- df.obs$resid[df.obs$D == 1 & df.obs$G.t == 1]
-g1d0 <- df.obs$resid[df.obs$D == 1 & df.obs$G.t == 0]
-g0d1 <- df.obs$resid[df.obs$D == 0 & df.obs$G.t == 1]
-g0d0 <- df.obs$resid[df.obs$D == 0 & df.obs$G.t == 0]
-
-p1 <- ks.test(g1d1, g1d0)
-p2 <- ks.test(g0d1, g0d0)
-
-list(group = df.obs$G.t, 
-     p = tibble(p1 = p1, p2 = p2))
