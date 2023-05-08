@@ -4,7 +4,7 @@ set.seed(1)
 
 N     <- 10000
 beta  <- 1
-delta <- 1
+delta <- 5
 
 df <- tibble(i = 1:N, 
              
@@ -52,7 +52,9 @@ run_gfe <- function(beta.guess,
   s   <-  0
   
   while(abs(div) > tol){
+    
     if(verbose) print(div)
+    
     s <- s + 1
     if(s > max.iter) stop("failed")
     
@@ -82,6 +84,7 @@ run_gfe <- function(beta.guess,
 }
 
 guess_params <- function(beta.params, alpha.params){
+  
   return(
     list(
       beta = rnorm(length(beta.params$mean), 
@@ -109,9 +112,16 @@ run_guesses_gfe <- function(beta.params, alpha.params,
   attempts
 }
 
+select_best_attempt <- function(attempts){
+  # Select either the minimum div attempt, or the first div that attains the min
+  divs <- map_dbl(seq_along(attempts), \(x) attempts[[x]]$div)
+  attempts[[which(divs==min(divs))[1]]]
+}
+
+
 # Code testing
-beta.params  = list(mean = 2, sd = 3)
-alpha.params = list(mean = c(0, 0), sd = c(3, 3))
+beta.params  <- list(mean = 2, sd = 3)
+alpha.params <- list(mean = c(0, 0), sd = c(3, 3))
 
 guess <- guess_params(beta.params, alpha.params)
 out   <- run_gfe(guess$beta, guess$alpha, df.obs)
@@ -119,16 +129,15 @@ out$div
 
 # Overall run
 attempts <- run_guesses_gfe(beta.params, alpha.params)
-divs <- map_dbl(1:100, \(x) attempts[[x]]$div)
-divs[divs == min(divs)]
 
 map_dbl(1:100, 
         \(x) attempts[[x]]$beta.mat[length(attempts[[x]]$beta.mat)]) %>% 
   density %>% 
   plot
 
-df.final <- which()
+out <- select_best_attempt(attempts)
 
 feols(y ~ D , data = out$df)
+feols(y ~ D | g, data = out$df)
 
 
