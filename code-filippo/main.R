@@ -16,15 +16,18 @@ source(paste0(path, "code/funs.R"))
 Nsimul <- 100      # number of samples drawn
 Nobs <- 1000       # number of obs per sample
 TT <- 1            # number of periods
-g <- 0.5           # fraction in group 1
-p <- c(1/3,2/3)    # pscore for each group (p_0, p_1)
+gNum <- 5          # number of groups
+p <- c(1/3,1/3,1/3,2/3,2/3)   # pscore for each group
 tau <- 1           # treatment shift
-s2n <- 1           # signal-to-noise ratio in potential outcomes
+s2n <- 1           # signal-to-noise ratio in potential outcomes (parametrizes distance between mean of groups)
 
 # simulate bunch of datasets
 set.seed(8894)
-dfSims <- lapply(c(1:Nsimul), function(i) simulModel(N=Nobs, TT=2, g=g, p=p, tau=tau, s2n=s2n))
-res <- lapply(dfSims, function(df) gfe(df, out.var="Y", covs.var="D", nGroups = 2)) #, 
+dfSims <- lapply(c(1:Nsimul), function(i) simulModel(N=Nobs, TT=10, gNum=gNum, p=p, tau=tau, s2n=s2n))
+
+save(dfSims, file=paste0(path, "data/dfSims.rdata"))
+
+res <- lapply(dfSims, function(df) gfe(df, out.var="Y", covs.var="D", nGroups = 5)) #, 
                            #mc.cores=Ncores, mc.set.seed=8894)
 
 set.seed(8894)
@@ -32,7 +35,7 @@ toplot <- NULL
 for (Tobs in c(1, 2, 5)) {
   
   for (s2n in c(1, 3, 5)) {
-    dfSims <- lapply(c(1:Nsimul), function(i) simulModel(N=Nobs, TT=Tobs, g=g, p=p, tau=tau, s2n=s2n))
+    dfSims <- lapply(c(1:Nsimul), function(i) simulModel(N=Nobs, TT=Tobs, gNum=g, p=p, tau=tau, s2n=s2n))
     res <- parallel::mclapply(dfSims, function(df) gfe(df, out.var="Y", covs.var="D", nGroups = 2),
                               mc.cores=Ncores, mc.set.seed=8894)
     

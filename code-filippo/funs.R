@@ -1,30 +1,35 @@
-simulModel <- function(N = 1000, TT = 2, rho = 0.5, g = 0.5, 
-                       p = c(0.5, 0.5), tau = 1, s2n = 1) {
+simulModel <- function(N = 1000, TT = 2, rho = 0.5, gNum = 5, 
+                       p = NULL, tau = 1, s2n = 1) {
   
   ######################################################
   # N: sample size
   # T: time dimension (we simulate from AR(1) process)
   # rho: parameter of AR(1) process
-  # g: fraction in group 1
-  # p: pscore in both groups c(p_0, p_1)
+  # gNum: number of groups (equal size)
+  # p: P(D=1|G=g)
   # tau: treatment shift
   # s2n: we normalize the variances of the groups to be 
   #      1, as such s2n parameterizes the mean.
   ######################################################
   
-  # grouping structure: 100*g% gets in one group
-  Ng1 <- ceiling(g*N)
-  Ng0 <- N - Ng1
-  G <- c(rep(0, Ng0), rep(1, Ng1))
-  
-  # assign treatment depending on group
-  D <- c(stats::rbinom(Ng0, 1, p[1]), 
-         stats::rbinom(Ng1, 1, p[2]))
+  # grouping structure: 
+  Ng <- ceiling(N/gNum)
+  G <- c()
+  for (g in seq_len(gNum)) {
+    G <- c(G, rep(g, Ng))
+  }
 
+  # assign treatment depending on group
+  if (length(p) != gNum) stop(paste0("'p' should be of length ", gNum,"!"))
+  
+  # draw treatment assignment within group
+  D <- unlist(lapply(seq_len(gNum), function(g) stats::rbinom(Ng, 1, p[g])))
+
+  # replicate treatment status over time
   D <- unlist(lapply(D, function(d) rep(d, TT)))
   
   # simulate potential outcomes
-  Y0 <- simulateY0(Ng0, Ng1, TT, rho)
+  Y0 <- simulateY0(Ng, TT, gNum, rho, s2n)
   Y1 <- Y0 + tau
   Y1het <- Y0 + tau * (1 + G)
   
@@ -38,19 +43,21 @@ simulModel <- function(N = 1000, TT = 2, rho = 0.5, g = 0.5,
   return(df)
 }
 
-simulateY0 <- function(Ng0, Ng1, TT, rho) {
+simulateY0 <- function(Ng, TT, gNum, rho, s2n) {
   # cross-section
   if (TT == 1) {
-    Y0 <- c(rnorm(Ng0, 0, 1),
-            rnorm(Ng1, s2n, 1))
+    Y0 <- unlist(lapply(seq_len(gNum), function(g) rnorm(Ng, (g-1)*s2n, 1)))
+    
   } else { # AR process
-    Y0 <- c(unlist(lapply(c(1:Ng0), function(i) ARsim(TT, rho, 0))),
-            unlist(lapply(c(1:Ng1), function(i) ARsim(TT, rho, 0))))
+    Y0 <- c()
+    for (g in seq_len(gNum)) {
+      Y0 <- c(Y0, unlist(lapply(c(1:Ng), function(i) ARsim(TT, rho, (g-1)*s2n))))
+    }
   }
   return(Y0)
 }
 
-ARsim <- function(TT, rho, c, burnin = 10) {
+ARsim <- function(TT, rho, c, burnin = 50) {
   Y <- Reduce(function(y, e) y * rho + e, rnorm(TT + burnin, c, 1), 0, accumulate=TRUE)
   Y <- Y[(burnin+1):(TT+burnin)]
   return(Y)
@@ -106,6 +113,7 @@ algorithmRun <- function(df, out.var, covs.var, nGroups, typeGuess, tol, iterMax
     g <- sapply(c(1:N), function(i) groupingGet(df.i[[i]][[out.var]],
                                                 df.i[[i]][[covs.var]], 
                                                 theta0, alpha0))
+
     g <- unlist(lapply(g, function(x) rep(x, TT)))
 
     # Step 2: optimize theta and alpha with RSS loss    
