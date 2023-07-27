@@ -9,7 +9,7 @@ delta <- 5
 df <- tibble(i = 1:N, 
              
              # Treatment effect: can make heterogeneous later 
-             beta = beta, 
+             beta = rnorm(beta, 1, sd = 2), 
              
              # Randomly assign covariate
              G = sample(c(0, 1), N, replace = TRUE), 
@@ -39,7 +39,7 @@ df.obs <- df %>% select(i, y, D)
 run_gfe <- function(beta.guess, 
                     alpha.guess, 
                     df.obs, 
-                    tol = 0.000000001, max.iter = 1000, verbose = FALSE){
+                    tol = 1e-09, max.iter = 1000, verbose = FALSE){
   
   # Matrices to store results in 
   beta.mat  <- matrix(nrow = max.iter, ncol = 1)
@@ -58,7 +58,7 @@ run_gfe <- function(beta.guess,
     s <- s + 1
     if(s > max.iter) stop("failed")
     
-    beta <- beta.mat[s, ]
+    beta  <- beta.mat[s, ]
     alpha <- alpha.mat[s, ]
     
     # 2. Assignment step
@@ -140,4 +140,5 @@ out <- select_best_attempt(attempts)
 feols(y ~ D , data = out$df)
 feols(y ~ D | g, data = out$df)
 
+summary(lm(out$df$g ~ df$G))
 
