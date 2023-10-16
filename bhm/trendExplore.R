@@ -33,7 +33,7 @@ N  <- nrow(df.sim)
 Ni <- length(unique(df.sim$iso))
 
 
-# are x and y trended -----------------------------------------------------
+# 1. are x and y trended -----------------------------------------------------
 x.trends <- feols(x ~ -1 + i(iso) + i(iso, time1), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
@@ -61,12 +61,20 @@ ggsave(paste0(dir.out, "time_trends.png"), height = 3, width = 7)
 pdf %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var) %>% 
   summarize(mean(sig))
 
+# Do the trends correlate
+left_join(select(tidy(x.trends), term, xt = estimate), 
+          select(tidy(y.trends), term, yt = estimate)) %>% 
+  mutate(type = case_when(
+    str_detect(term, "time1") & str_detect(term, "iso") ~ "trend", 
+    !str_detect(term, "year") & str_detect(term, "iso") ~ "fe iso",
+    .default = NA)) %>% 
+  ggplot() + 
+  geom_point(aes(x = xt, y = yt)) + 
+  geom_smooth(aes(x = xt, y = yt), method = 'lm', se = FALSE) + 
+  facet_wrap(vars(type), scales = 'free')
+ggsave(paste0(dir.out, "time_trends_corr.png"), height = 3, width = 7)
 
-
-
-
-
-#  are they quadratic trended  --------------------------------------------
+#  2. are they quadratic trended  --------------------------------------------
 x.trends2 <- feols(x ~ -1 + i(iso) + i(iso, time1) + i(iso, time2), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
@@ -92,10 +100,77 @@ pdf2 %>%
 
 ggsave(paste0(dir.out, "time2_trends.png"), height = 3, width = 7)
 
-pdf %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>% 
+pdf2 %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>% 
   summarize(mean(sig))
 
 
+# 3. is the trend there when we include time FEs --------------------------
+
+x.trends3 <- feols(x ~ -1 + i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
+                   df.sim, panel.id = c('iso', 'time1'), 
+                   vcov = 'hetero')
+
+y.trends3 <- feols(y ~ -1 + i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
+                   df.sim, panel.id = c('iso', 'time1'), 
+                   vcov = 'hetero')
+pdf3 <- bind_rows(
+  mutate(tidy(x.trends3), var = "Temperature"),  
+  mutate(tidy(y.trends3), var = "GDP-Growth")
+) %>% 
+  # filter(str_detect(term, "time")) %>%
+  mutate(term = case_when(str_detect(term, "time1")& str_detect(term, "iso")  ~ "linear", 
+                          str_detect(term, "time2") & str_detect(term, "iso")  ~ "quadratic", 
+                          str_detect(term, "time1") & !str_detect(term, "iso") ~ "fe time", 
+                          !str_detect(term, "time1") & str_detect(term, "iso") ~ "fe iso",
+                          )) 
+
+pdf3 %>% 
+  filter(var == "Temperature") %>% 
+  filter(str_detect(term, "linear")) %>% 
+  ggplot() + geom_histogram(aes(x =statistic))
+
+pdf3 %>% 
+  ggplot() + 
+  geom_rect(aes(xmin=-1.96, xmax=1.96, ymin=-Inf, ymax=Inf), 
+            fill = "pink", 
+            alpha = .01) + 
+  geom_histogram(aes(x = statistic), alpha = .4) + 
+  geom_vline(xintercept = 0, color = 'pink') + 
+  facet_wrap(vars(var, term), nrow = 2) + 
+  xlab("t-stat")
+
+# ggsave(paste0(dir.out, "time2_trends.png"), height = 3, width = 7)
+
+pdf2 %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>% 
+  summarize(mean(sig))
+
+
+df.sim
+plot(predict(x.trends), predict(x.trends3))
+
+
+
+# compare estimates -------------------------------------------------------
+
+tibble(df.sim, 
+       linear = predict(x.trends), 
+       quad_timefe = predict(x.trends3)
+       ) %>% 
+  filter(iso %in% c("GBR", "USA", "CHN")) %>% 
+  pivot_longer(cols = c(x, linear, quad_timefe)) %>% 
+  ggplot() + 
+  geom_line(aes(x = time1, y = value, color = name)) + 
+  facet_wrap(~iso)
+
+tibble(df.sim, 
+       linear = predict(y.trends), 
+       quad_timefe = predict(y.trends3)
+) %>% 
+  filter(iso %in% c("GBR", "USA", "CHN")) %>% 
+  pivot_longer(cols = c(y, linear, quad_timefe)) %>% 
+  ggplot() + 
+  geom_line(aes(x = time1, y = value, color = name)) + 
+  facet_wrap(~iso)
 
 
 # eda: how do trends in x and y relate ------------------------------------
