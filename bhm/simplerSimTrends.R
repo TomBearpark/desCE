@@ -70,7 +70,7 @@ Ni   <- 100
 NN   <- Ni * Nt
 
 beta <- .1
-Nsim <- 1000
+Nsim <- 200
 
 # Case 1: no trends
 sim1 <- map_dfr(
@@ -84,8 +84,32 @@ sim1 <- map_dfr(
 sim.plots(sim1)
 sim.stats(sim1, beta = beta)
 
-# Case 2: uncorrelated trends, centered on zero
+# Case 2: only x trending
 sim2 <- map_dfr(
+  1:Nsim, 
+  function(sim.i){
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
+            trend.mu = c(0.1, 0), 
+            trend.Sigma = matrix(c(1, 0, 0, 0), nrow = 2))
+  }
+)
+sim.plots(sim2)
+sim.stats(sim2, beta = beta)
+
+# Case 3: only y trending
+sim3 <- map_dfr(
+  1:Nsim, 
+  function(sim.i){
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
+            trend.mu = c(0, .1), 
+            trend.Sigma = matrix(c(0, 0, 0, 1), nrow = 2))
+  }
+)
+sim.plots(sim3)
+sim.stats(sim3, beta = beta)
+
+# Case 4: uncorrelated trends, centered on zero
+sim4 <- map_dfr(
   1:Nsim, 
   function(sim.i){
     run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
@@ -94,42 +118,16 @@ sim2 <- map_dfr(
   }
 )
 
-sim.plots(sim2)
-sim.stats(sim1, beta = beta)
+sim.plots(sim4)
+sim.stats(sim4, beta = beta)
 
-# Case 3: positive and correlated trends in both
-sim3 <- map_dfr(
+# Case 5: positive and correlated trends in both
+sim5 <- map_dfr(
   1:Nsim, 
   function(sim.i){
     run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
             trend.mu = c(0.1, 0.1), 
             trend.Sigma = matrix(c(1, .5, .5, 1), nrow = 2))
-  }
-)
-
-sim.plots(sim3)
-sim.stats(sim3, beta = beta)
-
-# Case 4: only x trending
-sim4 <- map_dfr(
-  1:Nsim, 
-  function(sim.i){
-    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
-            trend.mu = c(0.1, 0), 
-            trend.Sigma = matrix(c(1, 0, 0, 0), nrow = 2))
-  }
-)
-
-sim.plots(sim4)
-sim.stats(sim4, beta = beta)
-
-# Case 5: only y trending
-sim5 <- map_dfr(
-  1:Nsim, 
-  function(sim.i){
-    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
-            trend.mu = c(0, .1), 
-            trend.Sigma = matrix(c(0, 0, 0, 1), nrow = 2))
   }
 )
 
