@@ -53,7 +53,7 @@ run_sim <- function(sim.i,
 sim.stats <- function(sim.output, beta){
   sim.output %>% 
     mutate(dev = estimate - beta) %>% group_by(model) %>% 
-    summarize(mean(dev), median(dev), sqrt(mean(dev^2)))
+    summarize(mean(dev), mean(abs(dev)), median(dev), sqrt(mean(dev^2)))
 }
 
 sim.plots <- function(sim.output){
@@ -67,10 +67,10 @@ sim.plots <- function(sim.output){
 # run simulation ----------------------------------------------------------
 Nt   <- 40
 Ni   <- 100
-beta <- .1
-NN <- Ni * Nt
-Nsim <- 100
+NN   <- Ni * Nt
 
+beta <- .1
+Nsim <- 100
 
 # Case 1: no trends
 sim1 <- map_dfr(
@@ -90,14 +90,50 @@ sim.stats(sim1, beta = beta)
 sim2 <- map_dfr(
   1:Nsim, 
   function(sim.i){
-    run_sim(sim.i = sim.i, 
-            Ni = Ni, Nt = Nt, NN = NN, 
-            beta = beta, 
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
             trend.mu = c(0, 0), 
             trend.Sigma = diag(1, nrow = 2))
   }
 )
 
-sim1 %>% 
-  ggplot() + geom_density(aes(x = estimate)) + 
-  facet_wrap(~model)
+sim.plots(sim2)
+sim.stats(sim1, beta = beta)
+
+# Case 3: positive and correlated trends in both
+sim3 <- map_dfr(
+  1:Nsim, 
+  function(sim.i){
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
+            trend.mu = c(0.1, 0.1), 
+            trend.Sigma = matrix(c(1, .5, .5, 1), nrow = 2))
+  }
+)
+
+sim.plots(sim3)
+sim.stats(sim3, beta = beta)
+
+# Case 4: only x trending
+sim4 <- map_dfr(
+  1:Nsim, 
+  function(sim.i){
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
+            trend.mu = c(0.1, 0), 
+            trend.Sigma = matrix(c(1, 0, 0, 0), nrow = 2))
+  }
+)
+
+sim.plots(sim4)
+sim.stats(sim4, beta = beta)
+
+# Case 5: only y trending
+sim5 <- map_dfr(
+  1:Nsim, 
+  function(sim.i){
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
+            trend.mu = c(0, .1), 
+            trend.Sigma = matrix(c(0, 0, 0, 1), nrow = 2))
+  }
+)
+
+sim.plots(sim5)
+sim.stats(sim5, beta = beta)
