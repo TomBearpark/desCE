@@ -70,15 +70,13 @@ Ni   <- 100
 NN   <- Ni * Nt
 
 beta <- .1
-Nsim <- 100
+Nsim <- 1000
 
 # Case 1: no trends
 sim1 <- map_dfr(
   1:Nsim, 
   function(sim.i){
-    run_sim(sim.i = sim.i, 
-            Ni = Ni, Nt = Nt, NN = NN, 
-            beta = beta, 
+    run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, NN = NN, beta = beta, 
             trend.mu = c(0, 0), 
             trend.Sigma = diag(0, nrow = 2))
   }
