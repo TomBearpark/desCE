@@ -3,6 +3,8 @@
 # set up ------------------------------------------------------------------
 if(!require(pacman)) install.packages('pacman')
 pacman::p_load(fixest, tidyverse, janitor, broom, marginaleffects, useful)
+pacman::p_load(ggpubr, ggrepel)
+
 theme_set(theme_bw())
 
 if(Sys.info()['user'] == "tombearpark"){
@@ -34,11 +36,11 @@ Ni <- length(unique(df.sim$iso))
 
 
 # 1. are x and y trended -----------------------------------------------------
-x.trends <- feols(x ~ -1 + i(iso) + i(iso, time1), 
+x.trends <- feols(x ~ i(iso) + i(iso, time1), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
 
-y.trends <- feols(y ~ -1 + i(iso) + i(iso, time1), 
+y.trends <- feols(y ~ i(iso) + i(iso, time1), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
 pdf <- bind_rows(
@@ -64,22 +66,26 @@ pdf %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var) %>%
 # Do the trends correlate
 left_join(select(tidy(x.trends), term, xt = estimate), 
           select(tidy(y.trends), term, yt = estimate)) %>% 
+  filter(!str_detect(term, "Intercept")) %>% 
   mutate(type = case_when(
     str_detect(term, "time1") & str_detect(term, "iso") ~ "trend", 
     !str_detect(term, "year") & str_detect(term, "iso") ~ "fe iso",
     .default = NA)) %>% 
-  ggplot() + 
-  geom_point(aes(x = xt, y = yt)) + 
-  geom_smooth(aes(x = xt, y = yt), method = 'lm', se = FALSE) + 
+  ggplot(aes(x = xt, y = yt)) + 
+  geom_point() + 
+  geom_smooth( method = 'lm', se = FALSE) + 
+  stat_cor(
+    aes(label = paste(after_stat(rr.label), after_stat(p.label), sep = "~`,`~")
+    )) + 
   facet_wrap(vars(type), scales = 'free')
 ggsave(paste0(dir.out, "time_trends_corr.png"), height = 3, width = 7)
 
 #  2. are they quadratic trended  --------------------------------------------
-x.trends2 <- feols(x ~ -1 + i(iso) + i(iso, time1) + i(iso, time2), 
+x.trends2 <- feols(x ~ i(iso) + i(iso, time1) + i(iso, time2), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
 
-y.trends2 <- feols(y ~ -1 + i(iso) + i(iso, time1) + i(iso, time2), 
+y.trends2 <- feols(y ~ i(iso) + i(iso, time1) + i(iso, time2), 
                   df.sim, panel.id = c('iso', 'time1'), 
                   vcov = 'hetero')
 pdf2 <- bind_rows(
@@ -106,23 +112,30 @@ pdf2 %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>%
 
 # 3. is the trend there when we include time FEs --------------------------
 
-x.trends3 <- feols(x ~ -1 + i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
-                   df.sim, panel.id = c('iso', 'time1'), 
-                   vcov = 'hetero')
+x.trends3 <- 
+  feols(x ~ i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
+        df.sim, panel.id = c('iso', 'time1'), vcov = 'hetero')
 
-y.trends3 <- feols(y ~ -1 + i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
-                   df.sim, panel.id = c('iso', 'time1'), 
-                   vcov = 'hetero')
+y.trends3 <- 
+  feols(y ~i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
+        df.sim, panel.id = c('iso', 'time1'), vcov = 'hetero')
+
+# Check we understand FWL
+lm(resid(y.trends3) ~ resid(x.trends3))
+feols(y ~ x + i(time1, ref = 1) + i(iso) + i(iso, time1) + i(iso, time2), 
+      df.sim, panel.id = c('iso', 'time1'), 
+      vcov = 'hetero')
+
+
 pdf3 <- bind_rows(
   mutate(tidy(x.trends3), var = "Temperature"),  
-  mutate(tidy(y.trends3), var = "GDP-Growth")
-) %>% 
-  # filter(str_detect(term, "time")) %>%
-  mutate(term = case_when(str_detect(term, "time1")& str_detect(term, "iso")  ~ "linear", 
-                          str_detect(term, "time2") & str_detect(term, "iso")  ~ "quadratic", 
-                          str_detect(term, "time1") & !str_detect(term, "iso") ~ "fe time", 
-                          !str_detect(term, "time1") & str_detect(term, "iso") ~ "fe iso",
-                          )) 
+  mutate(tidy(y.trends3), var = "GDP-Growth")) %>% 
+  mutate(term = case_when(
+    str_detect(term, "time1")& str_detect(term, "iso")  ~ "linear", 
+    str_detect(term, "time2") & str_detect(term, "iso")  ~ "quadratic",
+    str_detect(term, "time1") & !str_detect(term, "iso") ~ "fe time", 
+    !str_detect(term, "time1") & str_detect(term, "iso") ~ "fe iso",)) %>% 
+  filter(!str_detect(term, "Intercept"))
 
 pdf3 %>% 
   filter(var == "Temperature") %>% 
@@ -138,130 +151,66 @@ pdf3 %>%
   geom_vline(xintercept = 0, color = 'pink') + 
   facet_wrap(vars(var, term), nrow = 2) + 
   xlab("t-stat")
+ggsave(paste0(dir.out, "time2_trends_wFE.png"), height = 4, width = 9)
 
 # ggsave(paste0(dir.out, "time2_trends.png"), height = 3, width = 7)
+left_join(select(tidy(x.trends3), term, xt = estimate),
+          select(tidy(y.trends3), term, yt = estimate)) %>% 
+  mutate(term = case_when(
+    str_detect(term, "time1")& str_detect(term, "iso")  ~ "linear", 
+    str_detect(term, "time2") & str_detect(term, "iso")  ~ "quadratic",
+    str_detect(term, "time1") & !str_detect(term, "iso") ~ "fe time", 
+    !str_detect(term, "time1") & str_detect(term, "iso") ~ "fe iso",)) %>% 
+  filter(!str_detect(term, "Intercept")) %>% 
+  ggplot(aes(x = xt, y = yt)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  stat_cor(
+    aes(label = paste(after_stat(rr.label), after_stat(p.label), sep = "~`,`~")
+    )) + 
+  facet_wrap(~term, scales = 'free')
+ggsave(paste0(dir.out, "time2_trends_wFE_corr.png"), height = 4, width = 9)
 
-pdf2 %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>% 
+pdf3 %>% mutate(sig = 1*(abs(statistic)>1.96)) %>% group_by(var, term) %>% 
   summarize(mean(sig))
 
-
-df.sim
-plot(predict(x.trends), predict(x.trends3))
 
 
 
 # compare estimates -------------------------------------------------------
+x.twfe <- feols(x ~ i(iso) + i(time1), 
+                  df.sim, panel.id = c('iso', 'time1'), 
+                  vcov = 'hetero')
+
+y.twfe <- feols(y ~ i(iso) + i(time1), 
+                  df.sim, panel.id = c('iso', 'time1'), 
+                  vcov = 'hetero')
+
 
 tibble(df.sim, 
-       linear = predict(x.trends), 
+       twfe = predict(x.twfe), 
        quad_timefe = predict(x.trends3)
        ) %>% 
   filter(iso %in% c("GBR", "USA", "CHN")) %>% 
-  pivot_longer(cols = c(x, linear, quad_timefe)) %>% 
+  pivot_longer(cols = c(x, twfe, quad_timefe)) %>% 
   ggplot() + 
   geom_line(aes(x = time1, y = value, color = name)) + 
-  facet_wrap(~iso)
+  facet_wrap(~iso, scales = 'free', ncol = 1) + 
+  ggtitle("Temp fitted values")
 
 tibble(df.sim, 
-       linear = predict(y.trends), 
+       twfe = predict(y.twfe), 
        quad_timefe = predict(y.trends3)
 ) %>% 
   filter(iso %in% c("GBR", "USA", "CHN")) %>% 
-  pivot_longer(cols = c(y, linear, quad_timefe)) %>% 
+  pivot_longer(cols = c(y, twfe, quad_timefe)) %>% 
   ggplot() + 
   geom_line(aes(x = time1, y = value, color = name)) + 
-  facet_wrap(~iso)
-
-
-# eda: how do trends in x and y relate ------------------------------------
-
-df.sim
-xt <- feols(x ~ -1 + i(iso) + i(time1, ref = "1") + i(iso, time1), 
-            df.sim, panel.id = c('iso', 'time1'), 
-            vcov = 'hetero')
-
-yt <- feols(y ~ -1 + i(iso) +  i(year, ref = "1") + i(iso, year), 
-            df.sim, panel.id = c('iso', 'year'), 
-            vcov = 'hetero')
-
-yt.x <- feols(y ~ -1 + x + i(iso) +  i(year, ref = "1") + i(iso, year), 
-            df.sim, panel.id = c('iso', 'year'), 
-            vcov = 'hetero')
-
-plot.df <- 
-  bind_rows(
-    left_join(select(tidy(xt), term, xt = estimate), 
-              select(tidy(yt), term, yt = estimate)) %>% 
-      mutate(y = "raw"),
-    left_join(select(tidy(xt), term, xt = estimate), 
-              select(tidy(yt.x), term, yt = estimate)) %>% 
-      mutate(y = "x control")
-    
-  ) %>% 
-  filter(!str_detect(term, "Intercept")) %>% 
-  mutate(type = case_when(
-    str_detect(term, "year") & str_detect(term, "iso") ~ "trend", 
-    str_detect(term, "year") & !str_detect(term, "iso") ~ "fe time", 
-    !str_detect(term, "year") & str_detect(term, "iso") ~ "fe iso",
-    .default = NA))
-
-
-plot.df %>% 
-  ggplot() + 
-  geom_point(aes(x = xt, y = yt)) + 
-  geom_smooth(aes(x = xt, y = yt), method = 'lm') + 
-  facet_wrap(vars(y, type), scales = 'free')
+  facet_wrap(~iso, scales = 'free', ncol = 1) + 
+  ggtitle("GDP-PC gr fitted values")
 
 
 
- 
-# Are there level differences in temperature across counties. OFC
-m.fe <- feols(x ~ i(iso), 
-                df.sim, panel.id = c('iso', 'year'), 
-              vcov = 'hetero')
 
-wald(m.fe)
-
-# After removing level differences, are there differences in trends across countries
-
-trends <- i(df.sim$iso, df.sim$year) %>% as_tibble()
-names(trends) <- paste0(names(trends), 'trend')
-trends.ff     <- paste0(names(trends), collapse = "+")
-
-df.sim.t <- bind_cols(df.sim, trends)
-ff <- as.formula(paste0("x ~ i(iso) + ", trends.ff))
-m.fe <- feols(ff, 
-              df.sim.t, 
-              panel.id = c('iso', 'year'), 
-              vcov = 'hetero')
-
-wald(m.fe, keep = "trend")
-
-# After removing trends and level differences, is there common shocks
-m.fet <- feols(as.formula(paste0("x ~ i(iso) + ", trends.ff, 
-                                 "+ i(year)")), 
-              df.sim.t, 
-              panel.id = c('iso', 'year'), 
-              vcov = 'hetero')
-wald(m.fet, "year")
-
-
-# After removing trends and level differences, is there quadratic trend
-trends2 <- i(df.sim$iso, df.sim$year2) %>% as_tibble()
-
-m.fet.ar <- feols(as.formula(paste0("x ~ i(iso) + ", trends.ff, 
-                                 "+ i(year) + i(iso, l(x))")), 
-               df.sim.t, 
-               panel.id = c('iso', 'year'), 
-               vcov = 'hetero')
-wald(m.fet.ar, "l")
-
-
-
-# diagnostics on residuals ------------------------------------------------
-df.r <- tibble(df.sim, 
-          fe = resid(m.fe), 
-          fet = resid(m.fet), 
-          fet.ar = resid(m.fet.ar, na.rm = FALSE))
 
 
