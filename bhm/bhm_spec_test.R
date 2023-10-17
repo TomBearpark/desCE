@@ -86,7 +86,9 @@ bind_rows(
   predict_poly(reg1, "temp", 0, 35, 14, ci_level = 95, id.col = "1"), 
   predict_poly(reg2, "temp", 0, 35, 14, ci_level = 95, id.col = "2")
 ) %>% 
-  plot_rf_poly(facet.var = 'id') + 
+  plot_rf_poly(facet.var = 'id', fill.color = "#fdb927", 
+               line.color = "#552583", 
+               add_theme = TRUE) + 
   xlab("Temperature (C)")
 
 ggsave(paste0(dir.out, "rf_comparison.png"), height = 3, width = 8)
