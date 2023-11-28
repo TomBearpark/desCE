@@ -12,6 +12,7 @@ if(Sys.info()['user'] == "tombearpark"){
 }else{
   stop("error")
 }
+set.seed(123)
 db <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
 dir.out  <- paste0(db, "/out/presentation/")
@@ -82,120 +83,10 @@ ggplot(df.sim) + geom_point(aes(x = pred0, y= pred1))
 etable(reg0.0, reg0.1, keep = c("x1", "x2"), 
        fitstat = "AIC")
 
-
-
 rf0.0 <- predict_poly(reg0.0, "x", 0, 30, 14, ci_level = 95, id.col = "BHM manual") 
 rf0.1 <- predict_poly(reg0.1, "x", 0, 30, 14, ci_level = 95, id.col = "BHM") 
 bind_rows(rf0.0, rf0.1) %>% 
   plot_rf_poly(facet.var = 'id')
-
-# Rescale time trends to prevent issues with inversions
-df.simF <- df.sim %>% mutate(time1 = time1 / 10, 
-                             time2 = time1^2, 
-                             time3 = time1^3, 
-                             time4 = time1^4, 
-                             time5 = time1^5, 
-                             time6 = time1^6)
-
-# models ------------------------------------------------------------------
-
-ws   <- paste0(" w", 1:2, collapse = " +")
-twfe <- fixed(' + i(time1, ref = 0.1) + i(iso, ref = "AFG")')
-
-FEs.ftest <- map(
-  0:6, 
-  function(k){
-    if(k == 0) {
-      trends <- ''
-    }
-    else{
-      twfe <- paste0(twfe, ' + ')
-      trends <- paste0(' i(iso, time', 1:k, ',ref = "AFG")', collapse = " + ")
-    }
-    paste0(ws, twfe, trends, collapse = " +")
-  })
-
-
-# -------------------------------------------------------------------------
-# Show ordering according to an F-test on the outcome model
-
-
-models <- 
-  map(FEs.ftest, 
-    function(x){
-      feols(as.formula(paste0("y ~ x1 + x2 + ", x)), 
-            data = df.simF, cluster = "iso")
-    })
-etable(models, keep = c("x1", "x2"), fitstat = c("r2", "AIC", "BIC"))
-coefplot(models, keep = "x1")
-coefplot(models, keep = "x2")
-
-# Compare AIC/BIC of models
-map(models, \(x) BIC(x)) %>% unlist() %>%  plot()
-map(models, \(x) AIC(x)) %>% unlist() %>%  plot()
-
-#Trying to do F-test on outcome
-m2 <- lm(as.formula(y ~ x1 + x2 + w1 + w2 + 
-                   as.factor(iso) + as.factor(time1) + 
-                   iso:time1 + iso:time2
-                   ), df.simF)
-
-ff <- marginaleffects::hypotheses(
-  m2, joint = ":time1", vcov = "HC2", joint_test = "f"
-)
-ff
-
-
-
-# I dont understand how a model with pol6 6 time trend can be estimated 
-# when some units only have 5 observations??
-df.simF$pred.m6 <- predict(models[[7]], df.simF)
-
-df.simF %>% 
-  filter(iso == "AFG") %>% 
-  select(year, starts_with("pred"), y)
-
-tidy(models[[7]]) %>% 
-  filter(str_detect(term, "AFG"))
-
-tidy(models[[7]]) %>% filter(str_detect(term, "time6")) %>% 
-  ggplot() + geom_histogram(aes(x = p.value))
-
-# -------------------------------------------------------------------------
-# Show ordering according to an F-test on the treatment model
-
-models.x <- 
-  map(FEs.ftest, 
-      function(x){
-        feols(as.formula(paste0("x1 ~", x)), 
-              data = df.simF, 
-              cluster = "iso"
-              )
-      })
-
-map(models.x, \(x) BIC(x)) %>% unlist() %>% plot()
-map(models.x, \(x) AIC(x)) %>% unlist() %>% plot()
-
-map(models.x, \(x) fitstat(x, "f")$f$stat) %>% unlist() %>% plot()
-
-
-models.x[[1]]
-wald(models.x[[2]], ":time1")
-wald(models.x[[3]], ":time2")
-wald(models.x[[4]], ":time3")
-wald(models.x[[5]], ":time4")
-wald(models.x[[6]], ":time5")
-
-
-hypotheses(
-  models.x[[1]], joint = "w"
-)
-anova(models.x[[1]], models.x[[2]])
-
-fitstat(models.x[[1]], "f")
-
-
-wald(models.x[[1]])
 
 # CV ---------------------------------------------------------------------
 
