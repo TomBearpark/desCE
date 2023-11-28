@@ -1,9 +1,10 @@
-## Some fumbling around with the BSM main regression result
+## 1. Replicate BHM with various time trends
+## 2. Look at trends in temperature
 
 # set up ------------------------------------------------------------------
 if(!require(pacman)) install.packages('pacman')
 if(!require(useful)) devtools::install_github("TomBearpark/useful")
-pacman::p_load(fixest, tidyverse, useful)
+pacman::p_load(fixest, broom, tidyverse, useful)
 theme_set(theme_bw())
 
 if(Sys.info()['user'] == "tombearpark"){
@@ -13,7 +14,7 @@ if(Sys.info()['user'] == "tombearpark"){
 }
 db <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
-dir.out <- paste0(db, "/out/draft/")
+dir.out  <- paste0(db, "/out/draft/")
 
 # load data  --------------------------------------------------------------
 
@@ -94,3 +95,18 @@ bind_rows(
 ggsave(paste0(dir.out, "rf_comparison.png"), height = 3, width = 8)
 
 
+# trends in temperature  --------------------------------------------------
+
+m1 <- feols(data = df , 
+            temp1 ~ i(country, time, ref = "AFG")
+            |  country , 
+            panel.id = c('time', 'country'), 
+            vcov = "hetero")
+etable(m1, keep = "time")
+
+broom::tidy(m1) %>% 
+  filter(str_detect(term, "country")) %>% 
+  mutate(signif = ifelse(p.value<0.5, 1, 0)) %>% 
+  summarize(sum(signif), n())
+
+                          
