@@ -20,12 +20,13 @@ dir.out  <- paste0(db, "/out/draft/")
 
 df   <- read_csv(paste0(dir.data, '/input/GrowthClimateDataset.csv')) %>% 
   # Clean up, add variables (as in their stata code)
-  filter(., !is.na(growthWDI), !is.na(UDel_temp_popweight)) %>% 
+  filter(!is.na(growthWDI), !is.na(UDel_temp_popweight)) %>% 
   mutate(temp1 = UDel_temp_popweight,
          temp2   = temp1 * temp1, 
          precip1  = UDel_precip_popweight / 1000, 
          precip2 = precip1 * precip1) %>% 
   rename(y = growthWDI, country = countryname) 
+
 for(kk in 1:8){
   df[paste0("time", kk)] <- df$time^kk
 }

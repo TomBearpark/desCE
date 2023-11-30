@@ -53,43 +53,25 @@ Ni <- length(unique(df.sim$iso))
 
 # baseline regression for comparison --------------------------------------
 
-reg0.0 <- feols(data = df.sim, 
-                
-                y ~ x1 + x2 + w1 + w2 + 
-                  
-                i(iso, ref = "AFG") + 
-                i(time1, ref = 1) + 
-                  i(iso, time1, ref = "AFG") + 
-                  i(iso, time2, ref = "AFG") , 
-                
-              panel.id = c('time1', 'iso'), 
-              se = "hetero"
-              # cluster = ~iso
-              )
 
 reg0.1 <- feols(data = df.sim, y ~ x1 + x2 + w1 + w2 |
                 iso + time1 + iso[time1] + iso[time2], 
               panel.id = c('time1', 'iso'), 
-              se = "hetero"
+              cluster = "iso"
               # cluster = ~iso
               )
 
-df.sim$pred0 <- predict(reg0.0, df.sim)
-df.sim$pred1 <- predict(reg0.1, df.sim)
-
-ggplot(df.sim) + geom_point(aes(x = pred0, y= pred1))
-
-etable(reg0.0, reg0.1, keep = c("x1", "x2"), 
+etable(reg0.1, keep = c("x1", "x2"), 
        fitstat = "AIC")
 
-rf0.0 <- predict_poly(reg0.0, "x", 0, 30, 14, ci_level = 95, id.col = "BHM manual") 
 rf0.1 <- predict_poly(reg0.1, "x", 0, 30, 14, ci_level = 95, id.col = "BHM") 
-bind_rows(rf0.0, rf0.1) %>% 
+bind_rows(rf0.1) %>% 
   plot_rf_poly(facet.var = 'id')
 
 # CV ---------------------------------------------------------------------
 
-FEs <- list(' ~ w1 + w2 | iso',
+FEs <- list(
+  # ' ~ w1 + w2 | iso',
             ' ~ w1 + w2 | time1 + iso',
             ' ~ w1 + w2 | time1 + iso + iso[time1]',
             ' ~ w1 + w2 | time1 + iso + iso[time1] + iso[time2]', 
