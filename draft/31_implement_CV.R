@@ -18,7 +18,6 @@ dir.out  <- paste0(db, "/out/draft/")
 
 source(file.path(code, '/utils/cvFuncs.R'))
 
-
 # load and clean data -----------------------------------------------------
 
 df   <- read_csv(paste0(dir.data, '/input/GrowthClimateDataset.csv')) %>% 
@@ -53,20 +52,13 @@ Ni <- length(unique(df.sim$iso))
 
 # baseline regression for comparison --------------------------------------
 
-
 reg0.1 <- feols(data = df.sim, y ~ x1 + x2 + w1 + w2 |
                 iso + time1 + iso[time1] + iso[time2], 
-              panel.id = c('time1', 'iso'), 
-              cluster = "iso"
-              # cluster = ~iso
-              )
+              panel.id = c('time1', 'iso'), cluster = "iso")
 
-etable(reg0.1, keep = c("x1", "x2"), 
-       fitstat = "AIC")
 
 rf0.1 <- predict_poly(reg0.1, "x", 0, 30, 14, ci_level = 95, id.col = "BHM") 
-bind_rows(rf0.1) %>% 
-  plot_rf_poly(facet.var = 'id')
+bind_rows(rf0.1) %>% plot_rf_poly(facet.var = 'id')
 
 # CV ---------------------------------------------------------------------
 
@@ -94,16 +86,26 @@ results.y  <- run_cv(df.sim, "y", FEs, id.vars, test.prop, K = K)
 
 # Plot result
 bind_rows(
-  results.x1 %>% mutate(order = row_number(), var = 'x1'), 
-  results.x2 %>% mutate(order = row_number(), var = 'x2'), 
-  results.y  %>% mutate(order = row_number(), var = 'y'), 
+  results.x1 %>% mutate(order = row_number(), var = 'Temperature'), 
+  results.x2 %>% mutate(order = row_number(), var = 'Temperature Squared'), 
+  results.y  %>% mutate(order = row_number(), var = 'GDP-PC Growth'), 
 ) %>% 
-  mutate(model = str_split(model, "\\|", simplify = TRUE)[,2]) %>% 
-  # filter(!str_detect(model, "4|3")) %>% 
+  mutate(model = str_split(model, "\\|", simplify = TRUE)[,2], 
+         Model = model) %>% 
+  mutate(Model = ifelse(str_detect(model, "time1\\]"),  "K=1", model), 
+         Model = ifelse(!str_detect(model, "time1\\]"),  "K=0", Model), 
+         Model = ifelse(str_detect(model, "time2\\]"),  "K=2", Model), 
+         Model = ifelse(str_detect(model, "time3\\]"),  "K=3", Model), 
+         Model = ifelse(str_detect(model, "time4\\]"),  "K=4", Model), 
+         ) %>%
   ggplot() + 
-  geom_col(aes(x = order, y = rmse, fill = model)) + 
-  facet_wrap(~var, scales = 'free')
+  geom_col(aes(x = order, y = rmse, fill = Model)) + 
+  facet_wrap(~var, scales = 'free') + 
+  xlab("Ranking")
+
 ggsave(paste0(dir.out, "cv_result_BHM.png"), height = 3, width = 8)
+
+# bonus plots -------------------------------------------------------------
 
 m.x1 <- feols(best.model(results.x1), df.sim, combine.quick = FALSE)
 m.x2 <- feols(best.model(results.x2), df.sim, combine.quick = FALSE)
