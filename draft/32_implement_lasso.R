@@ -49,51 +49,56 @@ etable(reg0, keep = c("x1", "x2"))
 # hdm does not allow user to choose which coefficients penalize and which not
 # so we will use glmnet. first we check that we get the same answers when 
 # lambda is the same
-y <- df$y
+y  <- df$y
 d1 <- df$x1
 d2 <- df$x2
 covs.cont <- c("w1", "w2")
-X <- model.matrix(y ~ w1 + w2 + as.factor(iso) + as.factor(time1) + 
-                    (time1 + time2 + time3 + time4) * as.factor(iso), df)[, -1]
+df <- df %>% 
+  mutate(iso = as.factor(iso), yearFE = as.factor(time1))
+
+X <- model.matrix(y ~ w1 + w2 + iso + yearFE + 
+                    (time1 + time2 + time3 + time4) * iso, df)[, -1]
 
 # follow Gelman's advice to standardize dummies https://statmodeling.stat.columbia.edu/2009/07/11/when_to_standar/
 Xstd <- X
 Xstd[,covs.cont] <- apply(X[,covs.cont], 2, function(x) x / (2*sd(x)))
 
+# We only want to penalise time trend related stuff
+sel.penalized <- str_subset(colnames(Xstd), "time")
+sel.nopen     <- str_subset(colnames(Xstd), "time", negate = TRUE)
 
-sel.penalized <- (unlist(lapply(purrr::map(stringr::str_split(colnames(Xstd), ":"), 2), function(l) length(l))) == 1)
-time.fe <- unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time1\\)"), function(l) length(l) == 2)) |
-           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time2\\)"), function(l) length(l) == 2)) |
-           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time3\\)"), function(l) length(l) == 2)) |
-           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time4\\)"), function(l) length(l) == 2))
-sel.penalized[colnames(Xstd) %in% c("time1", "time2", "time3", "time4")] <- TRUE
-sel.penalized[time.fe] <- TRUE
+stopifnot(length(sel.penalized) + length(sel.nopen) == dim(X)[2])
 
+X.pen   <- Xstd[, sel.penalized]
+X.nopen <- Xstd[, sel.nopen]
 
-X.nopen <- Xstd[,!sel.penalized]
-X.pen <- Xstd[,sel.penalized]
+X.mat <- cbind(X.pen, X.nopen)
+penalties <- c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen)))
 
 # run lasso for each treatment equation and for outcome equation
-lasso.d1.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d1, alpha=1, standardize = FALSE,
-                                 penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
+# Temperature
+lasso.d1.cv <- glmnet::cv.glmnet(x=X.mat, y=d1, alpha=1, standardize = FALSE,
+                                 penalty.factor = penalties)
 
-lasso.d1 <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=d1, alpha=1, lambda = c(lasso.d1.cv$lambda.1se, lasso.d1.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
+lasso.d1 <- glmnet::glmnet(x=X.mat, y=d1, alpha=1, 
+                           lambda = c(lasso.d1.cv$lambda.1se, lasso.d1.cv$lambda.min),
+                           penalty.factor = penalties, standardize = FALSE)
 
+# Temperature square
+lasso.d2.cv <- glmnet::cv.glmnet(x=X.mat, y=d2, alpha=1, standardize = FALSE,
+                                 penalty.factor = penalties)
+                                 
+lasso.d2 <- glmnet::glmnet(x=X.mat, y=d2, alpha=1, 
+                           lambda = c(lasso.d2.cv$lambda.1se, lasso.d2.cv$lambda.min),
+                           penalty.factor = penalties, standardize = FALSE)
 
-lasso.d2.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d2, alpha=1, standardize = FALSE,
-                                 penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
+# Outcome
+lasso.y.cv <- glmnet::cv.glmnet(x=X.mat, y=y, alpha=1, maxit = 5000, standardize = FALSE,
+                                penalty.factor = penalties)
 
-lasso.d2 <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=d2, alpha=1, lambda = c(lasso.d2.cv$lambda.1se, lasso.d2.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
-
-
-lasso.y.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=y, alpha=1, maxit = 1000, standardize = FALSE,
-                                 penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
-
-lasso.y <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=y, alpha=1, lambda = c(lasso.y.cv$lambda.1se, lasso.y.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
-
+lasso.y <- glmnet::glmnet(x=X.mat, y=y, alpha=1, 
+                          lambda = c(lasso.y.cv$lambda.1se, lasso.y.cv$lambda.min),
+                          penalty.factor = penalties, standardize = FALSE)
 
 # store coefficients different from 0
 # according to 1stdv rule 
@@ -105,9 +110,68 @@ lam.min.sel <- (lasso.d1$beta[ , 2] > 1e-04) | (lasso.d2$beta[ , 2] > 1e-04) | (
 sum(lam.std.sel)
 sum(lam.min.sel)
 
-post.lasso <- list()
-post.lasso[["lam.std"]] <- lm(y ~ -1 + X[, lam.std.sel])
-post.lasso[["lam.min"]] <- lm(y ~ -1 + X[, lam.min.sel])
+
+# create response function ------------------------------------------------
+reg.df <- bind_cols(y = df$y, 
+                    xtreat1 = df$x1, xtreat2 = df$x2, 
+                    as_tibble(X[, lam.std.sel])
+)  %>% 
+  janitor::clean_names()
+
+# Check i get whats going on. 
+var.df <- tibble(var = names(lam.std.sel), include = lam.std.sel)
+var.df %>% pull(var)
+
+
+# Total number of potential parameters
+# Ni -1 (ref) * 3 (unit FE, 2& time controls), Nt-1, 2 precip
+max.K <- 4
+n.unitFE   <- (length(unique(df$iso)))-1
+n.timeFEs  <- (length(unique(df$time1)))-1
+n.trends   <- max.k * length(unique(df$iso))
+n.controls <- length(c("w1", "w2"))
+n.unitFE + n.timeFEs + n.trends + n.controls
+
+# Which do we keep?
+var.df <- var.df %>% 
+  mutate(fe= str_replace_all(var, "as.factor\\(time", "timeFE"), 
+         fe = str_replace_all(fe, "1\\)", "")) %>% 
+  mutate(fe = str_remove_all(fe, "as.factor\\(iso\\)")) %>% 
+  mutate(fe.type = case_when(
+    str_detect(fe, "FE") ~ "time", 
+    str_detect(fe, "time1") ~ "trend 1", 
+    str_detect(fe, "time2") ~ "trend 2",
+    str_detect(fe, "time3") ~ "trend 3",
+    str_detect(fe, "time4") ~ "trend 4",
+    str_detect(fe, "w") ~ 'precip', 
+    !str_detect(fe, "time") ~ "unit"
+  ))
+
+var.df %>% 
+  group_by(fe.type) %>% 
+  tally()
+var.df %>% 
+  filter(include) %>% 
+  group_by(fe.type) %>% 
+  tally()
+
+view(var.df)
+
+
+
+names(reg.df) <- str_remove_all(names(reg.df), "as_factor_")
+
+vars <- names(reg.df)[-1] %>% 
+  paste0(collapse = "+")
+
+m.dml <- feols(as.formula(paste0("y ~ ", vars)), bind_cols(reg.df, iso= df$iso), 
+               cluster = 'iso')
+
+rf.dml <- predict_poly(m.dml, "xtreat", 0, 30, 14, ci_level = 95, id.col = "DML") 
+
+rf.dml %>%  
+  plot_rf_poly(facet.var = 'id')
+
 
 
 rf0 <- predict_poly(reg0, "x", 0, 30, 14, ci_level = 95, id.col = "BHM") 

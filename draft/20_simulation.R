@@ -13,7 +13,7 @@ seed <- 123
 set.seed(seed)
 db <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
-
+dir.out  <- paste0(db, "/out/draft/")
 source(file.path(code, '/utils/cvFuncs.R'))
 
 # calibrate magnitudes ----------------------------------------------------
@@ -56,8 +56,8 @@ trend.stats <- trends %>%
   summarize(v = var(estimate), mu = mean(estimate), p = mean(p.value))
 
 trends.xy <- left_join(
-  select(filter(trends, var == 'x1'), x = estimate, term), 
-  select(filter(trends, var == 'y'),  y = estimate, term), 
+  select(filter(trends, var == 'x1'), x = estimate, se.x =std.error,  term), 
+  select(filter(trends, var == 'y'),  y = estimate, se.y = std.error,  term), 
 ) 
 covs <- trends.xy %>% 
   summarize(cov.trends = cov(x, y))
@@ -76,7 +76,8 @@ run_sim <- function(sim.i,
                     trend.Sigma=NULL,
                     trends.df=NULL,
                     
-                    K = 10
+                    K = 10, 
+                    runF = FALSE
                     ){
   NN <- Ni*Nt
   message(sim.i)
@@ -92,9 +93,11 @@ run_sim <- function(sim.i,
     x.trends <- trends[,1]
     y.trends <- trends[,2]
   }else{
-    trends <- slice_sample(trends.df, n = Ni)
-    x.trends <- trends$x
-    y.trends <- trends$y
+    # trends <- slice_sample(trends.df, n = Ni)
+    # x.trends <- trends$x
+    # y.trends <- trends$y
+    x.trends <- rnorm(Ni, mean = trends.xy$x, sd = trends.xy$se.x)
+    y.trends <- rnorm(Ni, mean = trends.xy$y, sd = trends.xy$se.y)
   }
 
   # Create variables
@@ -126,7 +129,13 @@ run_sim <- function(sim.i,
   yx.winner  <- arrange(results.yx, rmse)[[1,1]]
   
   # F-test
-  f.winner <- ifelse(wald(m1, keep = "t", print = FALSE)$p < 0.05, "trend", "no trend")
+  if(runF){
+    f.winner <- ifelse(wald(m1, keep = "t", print = FALSE)$p < 0.05, 
+                       "trend", "no trend")  
+  }else{
+    f.winner <- NA
+  }
+  
   
   # Output the estimates
   bind_rows(
@@ -160,10 +169,13 @@ get_cv_winners <- function(sim.df){
 }
 
 
+rnorm(dim(trends.xy)[1], mean = trends.xy$x, sd = trends.xy$se.x)
+
+
 # globals -----------------------------------------------------------------
 
 Nt   <- 30
-Ni   <- 40
+Ni   <- 100
 Nsim <- 20
 
 # 1. just show we get bias from not including trends -------------------------
@@ -191,23 +203,14 @@ get_cv_winners(sim5)
 
 Noise <- matrix(c(var(residuals(regX)), 
                   0, 0, 
-                  # var(residuals(regY))
-                  # var(df$y), 
+                  # var(df$y)
                   .3
                   ), 
                 nrow = 2)
-# Trends.mu <- c(trend.stats$mu[trend.stats$var == "x1"],
-#                trend.stats$mu[trend.stats$var == "y"])
-# 
-# Trends.sigma <- matrix(
-#   c(trend.stats$v[trend.stats$var == "x1"],
-#     covs$cov.trends, covs$cov.trends, 
-#     trend.stats$v[trend.stats$var == "y"]), nrow = 2)
 
-# beta <- coef(reg0)['x1']
 beta <- .01
 sim6 <- future_map_dfr(
-  1:100, 
+  1:500, 
   function(sim.i){
     run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, beta = beta, 
             noise.Sigma = Noise, 
@@ -231,7 +234,7 @@ plot.df <- sim6 %>%
 get_cv_winners(sim6)
 
 map_dfr(
-  c('yx.selected', 'd.selected', 'f.selected'), 
+  c('yx.selected', 'd.selected'), 
   function(v){
     plot.df %>% 
       filter(model == .data[[v]]) %>% 
@@ -240,6 +243,12 @@ map_dfr(
       mutate(rule = v)
   }
 ) %>% 
+  mutate(rule = case_when(rule == "d.selected" ~ "Double Selection", 
+                          rule == "yx.selected" ~ "NPS CV", )) %>% 
+  mutate(rule = fct_relevel(rule, c("NPS CV", "Double Selection"))) %>% 
   ggplot() + geom_density(aes(x = estimate))+
   geom_vline(xintercept = beta, color = 'red')  +
-  geom_vline(aes(xintercept = mu)) + facet_wrap(~rule)
+  geom_vline(aes(xintercept = mu)) + facet_wrap(~rule) + 
+  xlab("Beta Estimate")
+
+ggsave(paste0(dir.out, "trend_CV_sim.png"), height = 3, width = 6)
