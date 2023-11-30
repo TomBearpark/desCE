@@ -53,12 +53,8 @@ y <- df$y
 d1 <- df$x1
 d2 <- df$x2
 covs.cont <- c("w1", "w2")
-X <- model.matrix(y ~ w1 + w2 + as.factor(iso) + as.factor(time1) + (time1 + time2) * as.factor(iso), df)[, -1]
-
-# check design matrix is the same
-reg <- lm(y ~ -1 + d1 + d2 + X)
-rbind(reg$coefficients[1:4],
-      reg0$coefficients)
+X <- model.matrix(y ~ w1 + w2 + as.factor(iso) + as.factor(time1) + 
+                    (time1 + time2 + time3 + time4) * as.factor(iso), df)[, -1]
 
 # follow Gelman's advice to standardize dummies https://statmodeling.stat.columbia.edu/2009/07/11/when_to_standar/
 Xstd <- X
@@ -66,8 +62,11 @@ Xstd[,covs.cont] <- apply(X[,covs.cont], 2, function(x) x / (2*sd(x)))
 
 
 sel.penalized <- (unlist(lapply(purrr::map(stringr::str_split(colnames(Xstd), ":"), 2), function(l) length(l))) == 1)
-time.fe <- unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time1\\)"), function(l) length(l) == 2))
-sel.penalized[colnames(Xstd) %in% c("time1", "time2")] <- TRUE
+time.fe <- unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time1\\)"), function(l) length(l) == 2)) |
+           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time2\\)"), function(l) length(l) == 2)) |
+           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time3\\)"), function(l) length(l) == 2)) |
+           unlist(lapply(stringr::str_split(colnames(Xstd), "as.factor\\(time4\\)"), function(l) length(l) == 2))
+sel.penalized[colnames(Xstd) %in% c("time1", "time2", "time3", "time4")] <- TRUE
 sel.penalized[time.fe] <- TRUE
 
 
@@ -75,25 +74,25 @@ X.nopen <- Xstd[,!sel.penalized]
 X.pen <- Xstd[,sel.penalized]
 
 # run lasso for each treatment equation and for outcome equation
-lasso.d1.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d1, alpha=1,
+lasso.d1.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d1, alpha=1, standardize = FALSE,
                                  penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
 
 lasso.d1 <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=d1, alpha=1, lambda = c(lasso.d1.cv$lambda.1se, lasso.d1.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
+                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
 
 
-lasso.d2.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d2, alpha=1,
+lasso.d2.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=d2, alpha=1, standardize = FALSE,
                                  penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
 
 lasso.d2 <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=d2, alpha=1, lambda = c(lasso.d2.cv$lambda.1se, lasso.d2.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
+                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
 
 
-lasso.y.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=y, alpha=1, maxit = 1000,
+lasso.y.cv <- glmnet::cv.glmnet(x=cbind(X.pen, X.nopen), y=y, alpha=1, maxit = 1000, standardize = FALSE,
                                  penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
 
 lasso.y <- glmnet::glmnet(x=cbind(X.pen, X.nopen), y=y, alpha=1, lambda = c(lasso.y.cv$lambda.1se, lasso.y.cv$lambda.min),
-                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))))
+                           penalty.factor = c(rep(1, ncol(X.pen)), rep(0, ncol(X.nopen))), standardize = FALSE)
 
 
 # store coefficients different from 0
