@@ -1,6 +1,6 @@
 # Simulation to show why covariate selection on outcomes model doesn't work
 
-pacman::p_load(MASS, fixest, tidyverse, broom, furrr)
+pacman::p_load(MASS, fixest, tidyverse, broom, furrr, glmnet)
 plan(multisession, workers = 6)
 theme_set(theme_bw())
 if(Sys.info()['user'] == "tombearpark"){
@@ -25,10 +25,9 @@ df   <- read_csv(paste0(dir.data, '/input/GrowthClimateDataset.csv')) %>%
          precip1 = UDel_precip_popweight / 1000, 
          precip2 = precip1 * precip1, time1 = time, 
          time2   = time^2, time3 = time^3, time4 = time^4) %>% 
-  rename(y = growthWDI, 
+  select(y = growthWDI, 
          x1 = temp1, x2 = temp2, 
-         w1 = precip1, w2 = precip2) %>% 
-  select(y, x1, x2, w1, w2, iso, time1, time2)
+         w1 = precip1, w2 = precip2, iso, time1, time2) 
 
 reg0 <- feols(data = df, 
               y ~ x1 + i(iso, ref = "AFG") + i(iso, time1, ref = "AFG"), 
@@ -46,9 +45,10 @@ regX <- feols(data = df,
               se = "hetero")
 
 trends <- bind_rows(
+  mutate(broom::tidy(reg0), var = "yx"), 
   mutate(broom::tidy(regX), var = "x1"),
-  mutate(broom::tidy(regY), var = "y"), 
-  mutate(broom::tidy(reg0), var = "yx")) %>% 
+  mutate(broom::tidy(regY), var = "y")
+  ) %>% 
   filter(str_detect(term, ":time1"))
 
 trend.stats <- trends %>% 
@@ -59,8 +59,7 @@ trends.xy <- left_join(
   select(filter(trends, var == 'x1'), x = estimate, se.x =std.error,  term), 
   select(filter(trends, var == 'y'),  y = estimate, se.y = std.error,  term), 
 ) 
-covs <- trends.xy %>% 
-  summarize(cov.trends = cov(x, y))
+covs <- trends.xy %>% summarize(cov.trends = cov(x, y))
 
 beta <- coef(reg0)['x1']
 
@@ -79,6 +78,7 @@ run_sim <- function(sim.i,
                     K = 10, 
                     runF = FALSE
                     ){
+  
   NN <- Ni*Nt
   message(sim.i)
   
@@ -93,9 +93,6 @@ run_sim <- function(sim.i,
     x.trends <- trends[,1]
     y.trends <- trends[,2]
   }else{
-    # trends <- slice_sample(trends.df, n = Ni)
-    # x.trends <- trends$x
-    # y.trends <- trends$y
     x.trends <- rnorm(Ni, mean = trends.xy$x, sd = trends.xy$se.x)
     y.trends <- rnorm(Ni, mean = trends.xy$y, sd = trends.xy$se.y)
   }
@@ -112,7 +109,6 @@ run_sim <- function(sim.i,
            y = beta * x + y.trend + y.noise)
   
   # Estimate the two competing models
-  browser()
   m0 <- feols(y ~ x | i, data = df, cluster = "i")
   m1 <- feols(y ~ x + i(i, t) | i, data = df, cluster = "i")
   
@@ -128,6 +124,34 @@ run_sim <- function(sim.i,
   results.yx <- run_cv(df, "y", FEs, id.vars = c('i', 't'), test.prop = .2, K = K)
   yx.winner  <- arrange(results.yx, rmse)[[1,1]]
   
+  # Single Lasso on outcomes model only 
+  X <- model.matrix(y ~ x + i(i, t), df)[, -1]
+  cv.y <- cv.glmnet(x=X, y=df$y, alpha=1, standardize = TRUE,
+                       penalty.factor = c(0, rep(1, ncol(X)-1)))
+  
+  lasso.y <- glmnet(x=X, y=df$y, alpha=1, 
+                    lambda = cv.y$lambda.min,
+                    penalty.factor = c(0, rep(1, ncol(X)-1)), standardize = TRUE)
+  include <- get_selected_controls(list(y=lasso.y), 1e-8, "x")
+  regdf.ly <- get_post_selection_regdf(df = df, outcome = "y", treatments = "x", 
+                           selected_controls = include, X = X)
+  ff <- paste0(names(regdf.ly)[-1], collapse = "+")
+  post.lasso.y <- feols(.f("y ~", ff), regdf.ly, vcov = "hetero")
+  
+  # Double lasso: outcome and treatment
+  X  <- model.matrix(y ~ x + i(i, t), df)[, -c(1,2)]
+  cv <- run_double_lasso(pred.vars=df[,c("y", "x")], X.pen = X, 
+                         X.nopen = NULL)
+  selected <- get_selected_controls(cv, 1e-8, "x")
+  reg.df.double <- bind_cols(y = df$y, x = df$x, 
+                          as_tibble(X[, selected]))  %>% 
+    janitor::clean_names()
+  
+  vars.min <- paste0(names(reg.df.double)[-1], collapse = "+")
+  
+  m.dml <- feols(as.formula(paste0("y ~ ", vars.min)), 
+                     bind_cols(reg.df.double), vcov = "hetero")
+  
   # F-test
   if(runF){
     f.winner <- ifelse(wald(m1, keep = "t", print = FALSE)$p < 0.05, 
@@ -136,11 +160,12 @@ run_sim <- function(sim.i,
     f.winner <- NA
   }
   
-  
   # Output the estimates
   bind_rows(
     mutate(broom::tidy(m0), model = "no trend"), 
-    mutate(broom::tidy(m1), model = "trend")
+    mutate(broom::tidy(m1), model = "trend"), 
+    mutate(broom::tidy(post.lasso.y), model = "y lasso"), 
+    mutate(broom::tidy(m.dml), model = "dml")
   ) %>% 
     filter(str_detect(term, "x")) %>% 
     mutate(ii = sim.i, 
@@ -167,9 +192,6 @@ get_cv_winners <- function(sim.df){
           \(x) mutate(tally(group_by(sim.df, get(x))), type = x)) %>% 
     relocate(type)
 }
-
-
-rnorm(dim(trends.xy)[1], mean = trends.xy$x, sd = trends.xy$se.x)
 
 
 # globals -----------------------------------------------------------------
@@ -218,8 +240,8 @@ sim6 <- future_map_dfr(
             trend.Sigma = NULL, 
             trends.df = trends.xy
             )
-  }, 
-  .options = furrr_options(seed = seed)
+  }
+  , .options = furrr_options(seed = seed)
 )
 
 plot.df <- sim6 %>% 

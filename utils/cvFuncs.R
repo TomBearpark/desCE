@@ -67,3 +67,70 @@ best.model <- function(cv.out){
   cv.out <- arrange(cv.out, rmse)
   as.formula(cv.out$model[[1]])
 }
+
+# lasso -------------------------------------------------------------------
+run_double_lasso <- function(pred.vars, X.pen, X.nopen, standardize = TRUE, 
+                             maxit = 1000L){
+  
+  X.mat    <- cbind(X.pen, X.nopen)
+  dim.nopen <- ifelse(is.null(X.nopen), 0, ncol(X.nopen))
+  penalties <- c(rep(1, ncol(X.pen)), rep(0, dim.nopen))
+  
+  map(
+    names(pred.vars), 
+    function(var){
+      message(paste0("running for ", var))
+      
+      lasso.cv <- glmnet::cv.glmnet(x=X.mat, y=pred.vars[[var]], 
+                                    alpha=1, standardize = standardize,
+                                    penalty.factor = penalties, 
+                                    maxit = maxit)
+      
+      glmnet::glmnet(x=X.mat, y=pred.vars[[var]], alpha=1, 
+                     lambda = c(lasso.cv$lambda.min),
+                     penalty.factor = penalties, standardize = standardize)      
+    }
+  ) %>% 
+    set_names(names(pred.vars))
+}
+
+
+extract_coefs <- function(l.out, tol, sel.nopen){
+  map_dfr(names(l.out), 
+          function(xx){
+            l <- l.out[[xx]]
+            tibble(term = rownames(l$beta), beta = l$beta[,1], var = xx)
+          }) %>% 
+    mutate(
+      forced = ifelse(term %in% sel.nopen, 1, 0), 
+      chosen = ifelse(abs(beta) > tol, 1, 0), 
+      selected = ifelse(chosen == 1 | forced == 1, 1, 0))
+}
+
+get_selected_controls <- function(l.out, tol, sel.nopen){
+  extract_coefs(l.out=l.out, tol=tol, sel.nopen=sel.nopen) %>% 
+    dplyr::filter(selected == 1) %>% 
+    dplyr::pull(term) %>% 
+    unique()
+}
+
+get_post_selection_regdf <- function(df, outcome, treatments, 
+                                     X, 
+                                     selected_controls, 
+                                     treatment.names=NULL){
+  selected_controls <- selected_controls[!selected_controls %in% treatments]
+  
+  reg.df <- bind_cols(y = df[[outcome]], 
+                          dplyr::select(df, all_of(treatments)), 
+                          set_names(as_tibble (X[, selected_controls]), 
+                                    selected_controls)
+                      )  %>% 
+    janitor::clean_names()
+  
+  if(!is.null(treatment.names)){
+    names(reg.df)[names(reg.df) %in% treatments] <- treatment.names
+  }
+  reg.df
+}
+
+.f <- function(...) as.formula(paste0(...))

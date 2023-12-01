@@ -93,7 +93,7 @@ bind_rows(
   mutate(model = str_split(model, "\\|", simplify = TRUE)[,2], 
          Model = model) %>% 
   mutate(Model = ifelse(str_detect(model, "time1\\]"),  "K=1", model), 
-         Model = ifelse(!str_detect(model, "time1\\]"),  "K=0", Model), 
+         Model = ifelse(!str_detect(model, "time1\\]"), "K=0", Model), 
          Model = ifelse(str_detect(model, "time2\\]"),  "K=2", Model), 
          Model = ifelse(str_detect(model, "time3\\]"),  "K=3", Model), 
          Model = ifelse(str_detect(model, "time4\\]"),  "K=4", Model), 
