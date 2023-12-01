@@ -265,12 +265,21 @@ map_dfr(
       mutate(rule = v)
   }
 ) %>% 
+  bind_rows(
+    plot.df %>% 
+      filter(model %in% c("dml", "y lasso")) %>% 
+      group_by(model) %>% mutate(mu = mean(estimate)) %>%
+      select(estimate, rule = model, mu)
+  ) %>% 
   mutate(rule = case_when(rule == "d.selected" ~ "Double Selection", 
-                          rule == "yx.selected" ~ "NPS CV", )) %>% 
-  mutate(rule = fct_relevel(rule, c("NPS CV", "Double Selection"))) %>% 
+                          rule == "yx.selected" ~ "NPS CV", 
+                          .default = rule)) %>% 
+  mutate(rule = fct_relevel(rule, c("NPS CV", "Double Selection", 
+                                    "y lasso", "dml"))) %>% 
   ggplot() + geom_density(aes(x = estimate))+
   geom_vline(xintercept = beta, color = 'red')  +
   geom_vline(aes(xintercept = mu)) + facet_wrap(~rule) + 
   xlab("Beta Estimate")
+
 
 ggsave(paste0(dir.out, "trend_CV_sim.png"), height = 3, width = 6)
