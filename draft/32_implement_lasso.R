@@ -9,16 +9,18 @@ theme_set(theme_bw())
 if (Sys.info()['user'] == "tombearpark"){
   root <- "/Users/tombearpark/Dropbox/"  
   code <- '~/Documents/GitHub/desCE/'
+  db <- file.path(root, "BP_2023_fesearch")
 } else if (Sys.info()['user'] == "ux310uq-gl443t") {
   root <- "D:/Dropbox (Princeton)/projects/"  
 } else if (Sys.info()['user'] == "fpalomba") {
-  root <- "/Users/fpalomba/Dropbox (Princeton)/projects/"  
+  root <- "/Users/fpalomba/Dropbox (Princeton)/projects/"
+  db <- file.path(root, "BP_2023_fesearch/")
+  code <- file.path(root, "BP_2023_fesearch/githubRepo/")
 }
 
-if(Sys.info()['user'] == "tombearpark") source(file.path(code, '/utils/cvFuncs.R'))
+source(file.path(code, '/utils/cvFuncs.R'))
 
 set.seed(123)
-db <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
 dir.out  <- paste0(db, "/out/draft/")
 
@@ -70,6 +72,13 @@ stopifnot(length(sel.penalized) + length(sel.nopen) == dim(X)[2])
 
 X.pen   <- X[, sel.penalized]
 X.nopen <- X[, sel.nopen]
+
+# We penalize everything
+sel.penalized <- colnames(X)
+sel.nopen <- NULL
+X.pen <- X[, sel.penalized]
+X.nopen <- NULL
+
 
 # run double lasso --------------------------------------------------------
 pred.vars <- df[, c("y", "x1", "x2")]
