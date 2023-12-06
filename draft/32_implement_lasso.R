@@ -124,6 +124,23 @@ tibble(fe = include.min, type = "min") %>%
     !str_detect(fe, "time|year|w1|w2") ~ "unit"
   )) %>% group_by(fe.type, type) %>% tally() %>% arrange(type)
 
+
+## these output makes sense only if we penalized time and country FE
+# how many country FEs are selected?
+print(paste0("Tot countries in dataset: ", length(unique(df$iso))))
+lam.min.sel %>% 
+  filter(selected == 1, str_detect(term, "iso"), str_length(term) == 6) %>% 
+  group_by(var) %>% summarize(selected = sum(selected)) %>% 
+  ungroup()
+
+# how many time FEs are selected?
+print(paste0("Tot periods in dataset: ", length(unique(df$year))))
+lam.min.sel %>% 
+  filter(selected == 1, str_detect(term, "yearFE")) %>% 
+  group_by(var) %>% summarize(selected = sum(selected)) %>% 
+  ungroup()
+
+
 # create response function ------------------------------------------------
 
 reg.df.min <- bind_cols(y = df$y, xtreat1 = df$x1, xtreat2 = df$x2, 
