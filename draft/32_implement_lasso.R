@@ -9,16 +9,18 @@ theme_set(theme_bw())
 if (Sys.info()['user'] == "tombearpark"){
   root <- "/Users/tombearpark/Dropbox/"  
   code <- '~/Documents/GitHub/desCE/'
+  db <- file.path(root, "BP_2023_fesearch")
 } else if (Sys.info()['user'] == "ux310uq-gl443t") {
   root <- "D:/Dropbox (Princeton)/projects/"  
 } else if (Sys.info()['user'] == "fpalomba") {
-  root <- "/Users/fpalomba/Dropbox (Princeton)/projects/"  
+  root <- "/Users/fpalomba/Dropbox (Princeton)/projects/"
+  db <- file.path(root, "BP_2023_fesearch/")
+  code <- file.path(root, "BP_2023_fesearch/githubRepo/")
 }
 
-if(Sys.info()['user'] == "tombearpark") source(file.path(code, '/utils/cvFuncs.R'))
+source(file.path(code, '/utils/cvFuncs.R'))
 
 set.seed(123)
-db <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
 dir.out  <- paste0(db, "/out/draft/")
 
@@ -71,6 +73,13 @@ stopifnot(length(sel.penalized) + length(sel.nopen) == dim(X)[2])
 X.pen   <- X[, sel.penalized]
 X.nopen <- X[, sel.nopen]
 
+# We penalize everything
+sel.penalized <- colnames(X)
+sel.nopen <- NULL
+X.pen <- X[, sel.penalized]
+X.nopen <- NULL
+
+
 # run double lasso --------------------------------------------------------
 pred.vars <- df[, c("y", "x1", "x2")]
 # run selection for each treatment equation and for outcome equation
@@ -114,6 +123,23 @@ tibble(fe = include.min, type = "min") %>%
     str_detect(fe, "w1|w2") ~ 'precip', 
     !str_detect(fe, "time|year|w1|w2") ~ "unit"
   )) %>% group_by(fe.type, type) %>% tally() %>% arrange(type)
+
+
+## these output makes sense only if we penalized time and country FE
+# how many country FEs are selected?
+print(paste0("Tot countries in dataset: ", length(unique(df$iso))))
+lam.min.sel %>% 
+  filter(selected == 1, str_detect(term, "iso"), str_length(term) == 6) %>% 
+  group_by(var) %>% summarize(selected = sum(selected)) %>% 
+  ungroup()
+
+# how many time FEs are selected?
+print(paste0("Tot periods in dataset: ", length(unique(df$year))))
+lam.min.sel %>% 
+  filter(selected == 1, str_detect(term, "yearFE")) %>% 
+  group_by(var) %>% summarize(selected = sum(selected)) %>% 
+  ungroup()
+
 
 # create response function ------------------------------------------------
 
