@@ -12,7 +12,7 @@ if(Sys.info()['user'] == "tombearpark"){
   stop("error")
 }
 set.seed(123)
-db <- file.path(root, "BP_2023_fesearch")
+db      <- file.path(root, "BP_2023_fesearch")
 dir.data <- paste0(db, "/data/BurkeHsiangMiguel2015_Replication/data/")
 dir.out  <- paste0(db, "/out/draft/")
 
@@ -47,6 +47,7 @@ df.sim <- df %>%
   mutate(iso = as.factor(iso), 
          timeCont = paste0(time1,continent))
 
+
 N  <- nrow(df.sim)
 Ni <- length(unique(df.sim$iso))
 
@@ -63,7 +64,7 @@ bind_rows(rf0.1) %>% plot_rf_poly(facet.var = 'id')
 # CV ---------------------------------------------------------------------
 
 FEs <- list(
-  # ' ~ w1 + w2 | iso',
+            ' ~ w1 + w2 | iso',
             ' ~ w1 + w2 | time1 + iso',
             ' ~ w1 + w2 | time1 + iso + iso[time1]',
             ' ~ w1 + w2 | time1 + iso + iso[time1] + iso[time2]', 
@@ -72,17 +73,37 @@ FEs <- list(
             # ,  ' ~ w1 + w2 | continent^time1 + iso'
             )
 
+
+mX1 <- map(FEs, function(FE) feols(.f("x1", FE), df.sim))
+map_dbl(mX1, \(m) as.numeric(AIC(m))) %>% plot
+map_dbl(mX1, \(m) as.numeric(BIC(m))) %>% plot
+
+mX2 <- map(FEs, function(FE) feols(.f("x2", FE), df.sim))
+map_dbl(mX2, \(m) as.numeric(AIC(m))) %>% plot
+map_dbl(mX2, \(m) as.numeric(BIC(m))) %>% plot
+
+mY <- map(FEs, function(FE) feols(.f("y", FE), df.sim))
+map_dbl(mY, \(m) as.numeric(AIC(m))) %>% plot
+map_dbl(mY, \(m) as.numeric(BIC(m))) %>% plot
+
 # Parameters for CV
-df.sim$time1continent <- paste0(df.sim$time1, df.sim$continent)
+# df.sim$time1continent <- paste0(df.sim$time1, df.sim$continent)
 id.vars   <- c("iso", "time1")
 test.prop <- .2
 K         <- 100
 
-split(df.sim, id.vars, .2)
+# results.x1 <- run_cv(df.sim, "x1", FEs, id.vars, test.prop, K = K, 
+#                      return.full = TRUE)
+# 
+# results.x1 %>% group_by(i) %>% 
+#   arrange(rmse, by_group = TRUE) %>% 
+#   mutate(rank = row_number()) %>% 
+#   ungroup() %>% arrange(i) %>% 
+#   ggplot() + geom_bar(aes(y = rank)) + facet_wrap(~model)
 
 results.x1 <- run_cv(df.sim, "x1", FEs, id.vars, test.prop, K = K)
 results.x2 <- run_cv(df.sim, "x2", FEs, id.vars, test.prop, K = K)
-results.y  <- run_cv(df.sim, "y", FEs, id.vars, test.prop, K = K)
+results.y  <- run_cv(df.sim, "y",  FEs, id.vars, test.prop, K = K)
 
 # Plot result
 bind_rows(
@@ -99,7 +120,11 @@ bind_rows(
          Model = ifelse(str_detect(model, "time4\\]"),  "K=4", Model), 
          ) %>%
   ggplot() + 
-  geom_col(aes(x = order, y = rmse, fill = Model)) + 
+  geom_col(aes(x = order, y = rmse, fill = model), alpha = .4) +
+  geom_point(aes(x = order, y = rmse, color = model))+
+  geom_errorbar(aes(x = order, color = model, 
+                    ymin = rmse-1.96*se_rmse, ymax = rmse+1.96*se_rmse), 
+                width = .4)+
   facet_wrap(~var, scales = 'free') + 
   xlab("Ranking")
 
@@ -109,7 +134,7 @@ ggsave(paste0(dir.out, "cv_result_BHM.png"), height = 3, width = 8)
 
 m.x1 <- feols(best.model(results.x1), df.sim, combine.quick = FALSE)
 m.x2 <- feols(best.model(results.x2), df.sim, combine.quick = FALSE)
-m.y  <- feols(best.model(results.y), df.sim, combine.quick = FALSE)
+m.y  <- feols(best.model(results.y),  df.sim, combine.quick = FALSE)
 
 etable(m.x1, m.x2, m.y, fitstat = c("aic", "bic", "r2"))
 

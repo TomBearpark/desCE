@@ -31,6 +31,15 @@ for(kk in 1:8){
   df[paste0("time", kk)] <- df$time^kk
 }
 
+df %>% 
+  filter(iso %in% c("USA", "CHN")) %>% 
+  select(iso, year, y, Temp = temp1) %>% 
+  pivot_longer(cols = c(y, Temp)) %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = value)) + 
+  facet_wrap(~iso + name, scales = 'free')
+ggsave(paste0(dir.out, "non_stationary.png"), height = 6, width = 10)
+
 # compare models ----------------------------------------------------------
 
 reg0 <- feols(data = df , 

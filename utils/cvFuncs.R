@@ -44,22 +44,34 @@ crossvalidate <- function(df, K, models, dependent, id.vars, test.prop){
           tibble(model = model, 
                  rmse = rmse(predicted, testing_set[[dependent]]))
         }
-      )
+      ) %>% 
+        mutate(i = kk)
     }
   ) 
 }
 
 # Helpful wrapper
-run_cv <- function(df, dep.var, FEs, id.vars, test.prop, K){
+run_cv <- function(df, dep.var, FEs, id.vars, test.prop, K, 
+                   na.rm = FALSE, 
+                   return.full = FALSE){
   
   models <- paste0(dep.var, FEs)
   cv.r <- crossvalidate(df, K = K, model = models, dependent = dep.var, 
                         id.vars = id.vars, test.prop = test.prop)
   
-  cv.r %>% 
-    group_by(model) %>% 
-    summarize(rmse = mean(rmse)) %>% 
-    arrange(rmse) 
+  if(return.full){
+    return(cv.r)
+  }else{
+    return(
+      cv.r %>% 
+        group_by(model) %>% 
+        summarize(
+          se_rmse = sd(rmse,na.rm = na.rm),
+          rmse    = mean(rmse, na.rm = na.rm) 
+        ) %>% 
+        arrange(rmse) 
+    )
+  }
 }
 
 # Choose the model with the lowest RMSE 

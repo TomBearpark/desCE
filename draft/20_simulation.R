@@ -232,7 +232,7 @@ Noise <- matrix(c(var(residuals(regX)),
 
 beta <- .01
 sim6 <- future_map_dfr(
-  1:500, 
+  1:1000, 
   function(sim.i){
     run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, beta = beta, 
             noise.Sigma = Noise, 
@@ -271,15 +271,22 @@ map_dfr(
       group_by(model) %>% mutate(mu = mean(estimate)) %>%
       select(estimate, rule = model, mu)
   ) %>% 
-  mutate(rule = case_when(rule == "d.selected" ~ "Double Selection", 
-                          rule == "yx.selected" ~ "NPS CV", 
+  mutate(rule = case_when(rule == "d.selected" ~ "CV - Double Selection", 
+                          rule == "yx.selected" ~ "CV - Outcome only (NPS)", 
+                          rule == "dml" ~ "Lasso - Double selection", 
+                          rule == "y lasso" ~ "Lasso - Outcome only", 
                           .default = rule)) %>% 
-  mutate(rule = fct_relevel(rule, c("NPS CV", "Double Selection", 
-                                    "y lasso", "dml"))) %>% 
+  mutate(rule = fct_relevel(rule, c("CV - Outcome only (NPS)" , 
+                                    "CV - Double Selection", 
+                                    "Lasso - Outcome only",  
+                                    "Lasso - Double selection"))) %>% 
   ggplot() + geom_density(aes(x = estimate))+
   geom_vline(xintercept = beta, color = 'red')  +
   geom_vline(aes(xintercept = mu)) + facet_wrap(~rule) + 
   xlab("Beta Estimate")
 
-
 ggsave(paste0(dir.out, "trend_CV_sim.png"), height = 3, width = 6)
+
+
+
+
