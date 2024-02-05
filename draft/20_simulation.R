@@ -61,8 +61,6 @@ trends.xy <- left_join(
 ) 
 covs <- trends.xy %>% summarize(cov.trends = cov(x, y))
 
-beta <- coef(reg0)['x1']
-
 # funcs -------------------------------------------------------------------
 
 run_sim <- function(sim.i, 
@@ -93,8 +91,9 @@ run_sim <- function(sim.i,
     x.trends <- trends[,1]
     y.trends <- trends[,2]
   }else{
-    x.trends <- rnorm(Ni, mean = trends.xy$x, sd = trends.xy$se.x)
-    y.trends <- rnorm(Ni, mean = trends.xy$y, sd = trends.xy$se.y)
+    trends.xy <- trends.xy[sample(1:nrow(trends.xy), size=Ni, replace = TRUE),]
+    x.trends  <- trends.xy$x
+    y.trends  <- trends.xy$y
   }
 
   # Create variables
@@ -193,42 +192,18 @@ get_cv_winners <- function(sim.df){
     relocate(type)
 }
 
-
 # globals -----------------------------------------------------------------
 
 Nt   <- 30
 Ni   <- 100
-Nsim <- 20
 
-# 1. just show we get bias from not including trends -------------------------
-
-# Case 5: positive and correlated trends in both
-
-sim5 <- future_map_dfr(
-    1:20, 
-    function(sim.i){
-      run_sim(sim.i = sim.i, Ni = Ni, Nt = Nt, beta = .1, 
-              noise.Sigma = diag(1, nrow = 2), 
-              trend.mu = c(0.1, 0.1), 
-              trend.Sigma = matrix(c(1, .1, .1, 1), nrow = 2))
-    }, 
-    .options = furrr_options(seed = 123)
-  )
-  
-sim.plots(sim5)
-sim.stats(sim5, beta = beta)
-get_cv_winners(sim5)
-
-# 2. Show cv doesn't work in reasonable case ------------------------------
+#  Show cv doesn't work in reasonable case ------------------------------
 
 # Make it harder to detect
+var(residuals(regX))
+var(residuals(reg0))
 
-Noise <- matrix(c(var(residuals(regX)), 
-                  0, 0, 
-                  # var(df$y)
-                  .3
-                  ), 
-                nrow = 2)
+Noise <- matrix(c(.2, 0, 0, .2), nrow = 2)
 
 beta <- .01
 sim6 <- future_map_dfr(
@@ -246,47 +221,105 @@ sim6 <- future_map_dfr(
 
 plot.df <- sim6 %>% 
   mutate(across(contains("selected"), 
-                ~ifelse(str_detect(.x, "t"), "trend", "no trend"))) %>% 
+                ~ifelse(str_detect(.x, "t"), 
+                        "trend", "no trend"))) %>% 
   mutate(d.selected = ifelse(x.selected == "trend" | y.selected == "trend", 
                              "trend", "no trend"))
+
+
+# Single selection plot
+plot.df
+
+quantiles_95 <- function(x) {
+  r <- quantile(x, probs=c(0.05, 0.25, 0.5, 0.75, 0.95))
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
+  r
+}
 
 # sim.plots(sim6) + 
 #   geom_vline(xintercept = beta)
 # sim.stats(sim6, beta = beta)
 get_cv_winners(sim6)
 
-map_dfr(
-  c('yx.selected', 'd.selected'), 
+p1 <- map_dfr(
+  c('yx.selected', 'x.selected'), 
   function(v){
     plot.df %>% 
       filter(model == .data[[v]]) %>% 
-      mutate(mu = mean(estimate))  %>% 
-      select(estimate, selection = all_of(v), mu) %>% 
-      mutate(rule = v)
+      mutate(mu = mean(estimate), sd = sd(estimate), 
+             rule = v)  %>% 
+      select(estimate, selection = all_of(v), mu, sd, rule)
   }
 ) %>% 
   bind_rows(
-    plot.df %>% 
-      filter(model %in% c("dml", "y lasso")) %>% 
+    plot.df %>%
+      filter(model %in% c("y lasso")) %>%
       group_by(model) %>% mutate(mu = mean(estimate)) %>%
       select(estimate, rule = model, mu)
-  ) %>% 
+  ) %>%
   mutate(rule = case_when(rule == "d.selected" ~ "CV - Double Selection", 
                           rule == "yx.selected" ~ "CV - Outcome only (NPS)", 
                           rule == "dml" ~ "Lasso - Double selection", 
                           rule == "y lasso" ~ "Lasso - Outcome only", 
+                          rule == "x.selected" ~ "CV - Treatment only",
                           .default = rule)) %>% 
   mutate(rule = fct_relevel(rule, c("CV - Outcome only (NPS)" , 
-                                    "CV - Double Selection", 
-                                    "Lasso - Outcome only",  
-                                    "Lasso - Double selection"))) %>% 
-  ggplot() + geom_density(aes(x = estimate))+
+                                    "Lasso - Outcome only",
+                                    "CV - Treatment only"))
+                                    # "CV - Double Selection", 
+                                    ,
+                                    # "Lasso - Double selection"))
+         ) %>% 
+  ggplot() + 
+  geom_density(aes(x = estimate))+
   geom_vline(xintercept = beta, color = 'red')  +
-  geom_vline(aes(xintercept = mu)) + facet_wrap(~rule) + 
+  geom_vline(aes(xintercept = mu)) + 
+  facet_wrap(~rule) +
   xlab("Beta Estimate")
+p1
+ggsave(paste0(dir.out, "trend_singleCV_sim.png"), height = 2, width = 6)
 
-ggsave(paste0(dir.out, "trend_CV_sim.png"), height = 3, width = 6)
 
 
+# Double selection 
 
+p2 <- map_dfr(
+  c('d.selected'), 
+  function(v){
+    plot.df %>% 
+      filter(model == .data[[v]]) %>% 
+      mutate(mu = mean(estimate), sd = sd(estimate), 
+             rule = v)  %>% 
+      select(estimate, selection = all_of(v), mu, sd, rule)
+  }
+) %>%
+  bind_rows(
+    plot.df %>%
+      filter(model %in% c("dml")) %>%
+      group_by(model) %>% mutate(mu = mean(estimate)) %>%
+      select(estimate, rule = model, mu)
+  ) %>%
+  mutate(rule = case_when(rule == "d.selected" ~ "CV - Double Selection", 
+                          rule == "yx.selected" ~ "CV - Outcome only (NPS)", 
+                          rule == "dml" ~ "Lasso - Double selection", 
+                          rule == "y lasso" ~ "Lasso - Outcome only", 
+                          rule == "x.selected" ~ "CV - Treatment only",
+                          .default = rule)) %>% 
+  mutate(rule = fct_relevel(rule, c(
+    # "CV - Outcome only (NPS)" , 
+                                    # "CV - Treatment only"))
+         "CV - Double Selection",
+         # "Lasso - Outcome only",  
+         "Lasso - Double selection"))
+  ) %>% 
+  ggplot() + 
+  geom_density(aes(x = estimate))+
+  geom_vline(xintercept = beta, color = 'red')  +
+  geom_vline(aes(xintercept = mu)) + 
+  facet_wrap(~rule) +
+  xlab("Beta Estimate") + 
+  xlim(layer_scales(p1)$x$range$range)
+
+p2
+ggsave(paste0(dir.out, "trend_double_sim.png"), height = 2, width = 4)
 

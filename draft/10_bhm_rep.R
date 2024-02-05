@@ -65,7 +65,8 @@ reg3 <- feols(data = df ,
               | country + time + country[time] + country[time2] + 
                 country[time3], 
               panel.id = c('time', 'country'), 
-              cluster = ~country)
+              cluster = ~country
+              )
 
 reg8 <- feols(data = df , 
               y ~  temp1 + temp2 + precip1 + precip2
@@ -75,8 +76,8 @@ reg8 <- feols(data = df ,
                 country[time5] + country[time6] + 
                 country[time7] + country[time8], 
               panel.id = c('time', 'country'), 
-              # vcov = 'hetero'
-              cluster = ~country
+              cluster = ~country, 
+              # ssc = ssc(adj = TRUE, fixef.K = "full")
               )
 
 etable(reg0, reg1, reg2, reg3, reg8,
@@ -93,9 +94,9 @@ bind_rows(
 
 
 bind_rows(
-  predict_poly(reg0, "temp", 0, 35, 14, ci_level = 95, id.col = "0"), 
-  predict_poly(reg1, "temp", 0, 35, 14, ci_level = 95, id.col = "1"), 
-  predict_poly(reg2, "temp", 0, 35, 14, ci_level = 95, id.col = "2")
+  predict_poly(reg0, "temp", 0, 35, 14, ci_level = 95, id.col = "K = 0"), 
+  predict_poly(reg1, "temp", 0, 35, 14, ci_level = 95, id.col = "K = 1"), 
+  predict_poly(reg2, "temp", 0, 35, 14, ci_level = 95, id.col = "K = 2")
 ) %>% 
   plot_rf_poly(facet.var = 'id', fill.color = "#fdb927", 
                line.color = "#552583", 

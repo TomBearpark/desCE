@@ -74,10 +74,10 @@ X.pen   <- X[, sel.penalized]
 X.nopen <- X[, sel.nopen]
 
 # We penalize everything
-sel.penalized <- colnames(X)
-sel.nopen <- NULL
-X.pen <- X[, sel.penalized]
-X.nopen <- NULL
+# sel.penalized <- colnames(X)
+# sel.nopen <- NULL
+# X.pen <- X[, sel.penalized]
+# X.nopen <- NULL
 
 
 # run double lasso --------------------------------------------------------
@@ -156,21 +156,46 @@ m.dml.min <- feols(as.formula(paste0("y ~ ", vars.min)),
 # plot --------------------------------------------------------------------
 
 rf.dml.min <- predict_poly(m.dml.min, "xtreat", 0, 30, 14, ci_level = 95, 
-                           id.col = "Double lasso")
-rf.nps     <- predict_poly(reg0, "x", 0, 30, 14, ci_level = 95, id.col = "NPS")
-rf.cv      <- predict_poly(reg1, "x", 0, 30, 14, ci_level = 95, 
-                           id.col = "Cross Validation") 
-rf.bhm     <- predict_poly(reg2, "x", 0, 30, 14, ci_level = 95, id.col = "BHM")
+                           id.col = "Double lasso") %>% 
+  mutate(facet = id)
 
-bind_rows(rf.dml.min, rf.cv) %>% 
-  left_join(select(rf.bhm, temp, bhm = response)) %>% 
-  left_join(select(rf.nps, temp, nps = response))  %>%
-  plot_rf_poly(facet.var = 'id') + 
-  geom_line(aes(x = temp, y = bhm), color = "red", linetype= "dashed") + 
-  geom_line(aes(x = temp, y = nps), color = "green", linetype= "dashed") + 
+rf.cv      <- predict_poly(reg1, "x", 0, 30, 14, ci_level = 95, 
+                           id.col = "Cross Validation") %>% 
+  mutate(facet = id)
+
+rf.nps     <- predict_poly(reg0, "x", 0, 30, 14, ci_level = 95, 
+                           id.col = "NPS") %>% 
+  mutate(model = "NPS")
+rf.bhm     <- predict_poly(reg2, "x", 0, 30, 14, ci_level = 95, id.col = "BHM") %>% 
+  mutate(model = "BHM")
+
+rf.bhm.nps <- bind_rows(rf.bhm, rf.nps) 
+rf.ml      <- bind_rows(rf.dml.min, rf.cv)
+
+rfs <- rf.ml %>% mutate(type = "solid") %>% 
+  bind_rows(
+    mutate(rf.bhm.nps, facet = "Double lasso", type = "dashed")
+  ) %>% 
+  bind_rows(
+    mutate(rf.bhm.nps, facet = "Cross Validation", type = "dashed")
+  ) %>% 
+  mutate(id = fct_relevel(
+    id, c("Cross Validation", "Double lasso", "NPS", "BHM")
+  ))
+
+
+rfs %>% 
+  ggplot() + 
+  geom_line(aes(x = temp, y = response, color = id, linetype = type))  + 
+  geom_ribbon(data = rf.ml, aes(x = temp, ymin = lower, ymax = upper, 
+                                fill = id), alpha = .5) +
+  scale_color_manual(values = c("lightblue", "grey", "red", "green")) + 
+  scale_fill_manual(values = c('lightblue', "grey"), guide = 'none') + 
+  scale_linetype_manual(values = c("dashed", "solid"), guide = 'none') +
+  facet_wrap(~facet) + 
   xlab("Temperature (C)") 
 
-ggsave(paste0(dir.out, "double_selection_rf.png"), height = 3, width = 7)
+# ggsave(paste0(dir.out, "double_selection_rf.png"), height = 3, width = 7)
 
 
 # predicted values for USA and CHN under each model -----------------------

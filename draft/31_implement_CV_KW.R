@@ -76,7 +76,7 @@ FEs <- list(
   ' ~ w1 + w2 | FES + time1 + iso + iso[time1]',
   ' ~ w1 + w2 | FES + time1 + iso + iso[time1] + iso[time2]', 
   ' ~ w1 + w2 | FES + time1 + iso + iso[time1] + iso[time2] + iso[time3]',
-  ' ~ w1 + w2 | FES+ time1 + iso + iso[time1] + iso[time2] + iso[time3] + iso[time4]'
+  ' ~ w1 + w2 | FES + time1 + iso + iso[time1] + iso[time2] + iso[time3] + iso[time4]'
   # ,  ' ~ w1 + w2 | continent^time1 + iso'
 )
 
