@@ -64,3 +64,4 @@ sandwich::vcovCL(lm1, cluster = ~country, type = "HC3")
 
 # Try jackknife version, which apparently is the same thing
 lm.kn <- sandwich::vcovBS(lm1, cluster = ~country, type = "jackknife")
+se(lm.kn[2:5, 2:5])
