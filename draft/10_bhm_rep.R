@@ -27,7 +27,7 @@ df   <- read_csv(paste0(dir.data, '/input/GrowthClimateDataset.csv')) %>%
          precip2 = precip1 * precip1) %>% 
   rename(y = growthWDI, country = countryname) 
 
-for(kk in 1:8){
+for(kk in 1:12){
   df[paste0("time", kk)] <- df$time^kk
 }
 
@@ -80,7 +80,7 @@ reg8 <- feols(data = df ,
               # ssc = ssc(adj = TRUE, fixef.K = "full")
               )
 
-etable(reg0, reg1, reg2, reg3, reg8,
+etable(reg0, reg1, reg2, reg3, reg8, reg9, 
        fitstat = c("n", "r2", "wr2", "wald", "f.stat", "aic", "bic", "rmse"))
 
 bind_rows(
@@ -90,7 +90,18 @@ bind_rows(
   predict_poly(reg3, "temp", 0, 35, 14, ci_level = 95, id.col = "3"), 
   predict_poly(reg8, "temp", 0, 35, 14, ci_level = 95, id.col = "8")
 ) %>% 
-  plot_rf_poly(facet.var = 'id')
+  plot_rf_poly(facet.var = 'id', nrow = 1)
+
+df %>% 
+  mutate(pred2 = predict(reg2), pred8 = predict(reg8)) %>% 
+  filter(iso %in% c("USA", "CHN", "ZWE")) %>% 
+  select(iso, year, y, Temp = temp1, starts_with("pred")) %>% 
+  pivot_longer(cols = c(y, pred2, pred8)) %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = value, color = name, alpha = name)) + 
+  scale_color_manual(values = c("red", "orange", "black")) + 
+  scale_alpha_manual(values = c(1, 1, .5)) + 
+  facet_wrap(~iso, scales = 'free')
 
 
 bind_rows(
