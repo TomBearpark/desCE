@@ -8,7 +8,7 @@ theme_set(theme_bw())
 if(Sys.info()['user'] == "tombearpark"){
   root <- "/Users/tombearpark/Dropbox/"  
 }else{
-  stop("error")
+  root <- "/Users/fpalomba/Dropbox (Princeton)/projects/"
 }
 
 db       <- file.path(root, "BP_2023_fesearch")
@@ -39,7 +39,7 @@ m.k0 <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
               df, cluster = "country")
 
 m.k0.nofe <- feols(y ~ temp1 + temp2 + precip1 + precip2+
-                i(country, ref = "ZIM") + i(time), 
+                i(time) | country, 
               df, cluster = "country")
 
 etable(m.k0, m.k0.nofe, keep = "temp")
