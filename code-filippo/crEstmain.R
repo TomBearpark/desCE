@@ -37,9 +37,9 @@ df <- df %>%
 # regs --------------------------------------------------------------------
 
 # EHW HC3 
-m.k0.het <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
+m.k0 <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
                     country + time + country[time], 
-              df, vcov = "hetero")
+              df, cluster = "country")
 
 # CR0 
 m.k0.nossc <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
@@ -49,13 +49,13 @@ m.k0.nossc <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
 # CR1 (equation 8 in MacKinnon. Nielsen, and Webb (2023, JoE))
 m.k0.cr1 <- feols(y ~ temp1 + temp2 + precip1 + precip2 |
                       country + time + country[time], 
-                    df, cluster = "country", ssc=ssc(adj=T, fixef.K = "nested", cluster.adj=TRUE)) # defaul cluster
+                    df, cluster = "country", ssc=ssc(adj=FALSE, fixef.K = "nested", cluster.adj=TRUE)) # defaul cluster
 
 
 tempvars <- c("temp1", "temp2")
 
 # Compare default SEs 
-se.k0.het   <- se(vcov(m.k0.het))[tempvars]
+se.k0  <- se(vcov(m.k0))[tempvars]
 se.k0.nossc <- se(vcov(m.k0.nossc))[tempvars]
 se.k0.cr1  <- se(vcov(m.k0.cr1))[tempvars]
 
@@ -65,7 +65,7 @@ df$time.f <- as.factor(df$time)
 
 X <- model.matrix(y ~ -1 + temp1 + temp2 + precip1 + precip2 + country + time.f + country:time, df)
 X <- X[,-ncol(X)]
-eps <- m.k0.het$residuals
+eps <- m.k0$residuals
 XX <- t(X) %*% X
 XXinv <- solve(XX)
 
@@ -76,7 +76,7 @@ XXinv <- solve(XX)
 clusters <- unique(df$country)
 G <- length(clusters)
 
-eps <- as.matrix(m.k0.het$residuals)
+eps <- as.matrix(m.k0$residuals)
 
 D <- fastDummies::dummy_columns(df, select_columns = c("country"), remove_selected_columns = TRUE)
 D <- as.matrix(D[,str_detect(colnames(D), 'country')])
@@ -94,7 +94,7 @@ K <- ncol(X) # coeffs + fixed effects
 # we are clustering at the county level, thus county FE and country:time are nested
 # however, fixest seems to count country:time as non-nested and also adds a + 1
 # to get similar (yet not exact) results substitute Keff <- K + 1 - G 
-Keff <- K - 2*G 
+Keff <- K - 2*G  
 
 vcov.CL.adj <- vcov.CL * (G/(G-1)) * ((N-1)/(N-Keff)) 
 cbind(sqrt(diag(vcov.CL[tempvars,tempvars])), se.k0.nossc, 
@@ -115,11 +115,14 @@ vcov3 = function(object, cluster){
   
   beta_centered = lapply(c(unique_cluster), function(g) coef(eval(obj_call)) - coef(object)) 
   vcov = lapply(seq_along(unique_cluster), function(g) tcrossprod(as.matrix(beta_centered[[g]])))
-  vcov = Reduce("+", vcov) / G
+  vcov = Reduce("+", vcov) * (G-1)/G # correction factor has changed
   vcov
 }
 
-se(vcov3(m.k0.cr1, "country"))
+rbind(se(vcov3(m.k0.cr1, "country"))[tempvars], 
+      se.k0,
+      se.k0.nossc,
+      se.k0.cr1)
 
 
 
