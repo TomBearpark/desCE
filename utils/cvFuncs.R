@@ -1,4 +1,4 @@
-pacman::p_load(tidyverse, fixest)
+pacman::p_load(tidyverse, fixest, janitor)
 
 # cv funcs ----------------------------------------------------------------
 
@@ -27,11 +27,13 @@ rmse <- function(predictions, targets){
 
 # Loop over iteratiosn (1:K) and a list of models, evaluating their RMSE
 # out of sample performance 
-crossvalidate <- function(df, K, models, dependent, id.vars, test.prop){
+crossvalidate <- function(df, K, models, dependent, id.vars, test.prop, 
+                          verbose=FALSE){
   
   map_dfr(
     1:K, 
     function(kk){
+      if(verbose) print(paste0("Running CV : ", K))
       data <- split(df, id.vars, test.prop)
       training_set <- data[data$test != 1,]
       testing_set  <- data[data$test == 1,]

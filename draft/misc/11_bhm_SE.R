@@ -104,10 +104,11 @@ etable(m0, m1, m2, keep = "temp")
 
 # Sumcluster
 vars <- c("temp1", "temp2")
-s0 <- summclust(m0, cluster = ~country, params = vars) 
+# s0 <- summclust(m0, cluster = ~country, params = vars) 
 s1 <- summclust(m1, cluster = ~country, params = vars)
 s2 <- summclust(m2, cluster = ~country, params = vars)
 
+summary(s0)
 summary(s1)
 summary(s2)
 # Check everything gives same coefficient estimates 
@@ -118,5 +119,60 @@ s2$coef_estimates[vars]
 vcov(fm1)[vars, vars]
 s1$vcov[vars, vars]
 s2$vcov[vars, vars]
+
+
+
+# residualise first, then use SUMM CLUST ----------------------------------
+
+# Paper replication
+df <- df %>% 
+  group_by(country) %>% 
+  add_tally() %>% 
+  ungroup()
+
+table(df$n)
+
+# df.bal <- df %>% filter(n == 50)
+df.bal <- df
+fm1 <- feols(data = df.bal , 
+             y ~ temp1 + temp2 + precip1 + precip2
+             
+             | 
+               country + time + country[time] + country[time2]
+             # + time + country[time] + country[time2]
+             , 
+             
+             panel.id = c('time', 'country'), 
+             cluster = 'country')
+
+
+resid.vars <- c("y", "temp1", "temp2", "precip1", "precip2")
+
+for(r.var in resid.vars){
+  ff <- as.formula(paste0(r.var, 
+                          '~ 1 | country  + time + country[time] + country[time2]
+                          '# + country[time] + country[time2]'
+                          ))
+  rr <- feols(ff, data = df.bal)
+  df.bal[paste0(r.var, "_dt")] <- residuals(rr)
+}
+
+m.r <- feols(data = df.bal , 
+             y_dt ~ temp1_dt + temp2_dt + precip1_dt + precip2_dt 
+             # | 
+             , 
+             panel.id = c('time', 'country'), 
+             cluster = "country")
+
+
+etable(fm1, m.r)
+
+coef(fm1)
+coef(m.r)[-1]
+se(fm1)
+se(m.r)[-1]
+summ.m.r <- summclust::summclust(m.r, cluster = ~country, 
+                                 params = c("temp1_dt", "temp2_dt"))
+se(summ.m.r$vcov)[c("temp1_dt", "temp2_dt")]
 
 

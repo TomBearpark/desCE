@@ -1,5 +1,7 @@
 * Script to make Extended Data Table 1
 
+ssc install summclust
+
 clear all
 // set mem 1G
 // set matsize 10000
@@ -16,7 +18,21 @@ gen precip2 = precip*precip
 cap est drop reg*
 
 
-reg growthWDI temp temp2 precip precip2 i.year _yi_* _y2_* i.iso_id , cluster(iso_id)  //full sample
+summclust growthWDI temp temp2 precip precip2, fevar(year) absorb(iso_id) cluster(iso_id) regtable
+
+summclust growthWDI temp temp2 precip precip2, fevar(year) absorb(iso_id) cluster(iso_id) regtable
+
+reghdfe growthWDI temp temp2 precip precip2 i.year, absorb(iso_id) cluster(iso_id) 
+est sto m1
+
+
+reghdfe growthWDI temp temp2 precip precip2, absorb(year iso_id) cluster(iso_id)
+est sto m2
+esttab m1 m2, keep(temp temp2) se
+
+
+
+reg growthWDI temp temp2 precip precip2 i.year _yi_* _y2_* i.iso_id , cluster(iso_id, )  //full sample
 est sto m1
 
 reg growthWDI temp temp2 precip precip2 i.year _yi_* _y2_* i.iso_id , cluster(iso_id, hc3)  //full sample

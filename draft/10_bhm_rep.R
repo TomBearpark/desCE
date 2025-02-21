@@ -5,7 +5,7 @@
 if(!require(pacman)) install.packages('pacman')
 if(!require(useful)) devtools::install_github("TomBearpark/useful")
 pacman::p_load(fixest, broom, tidyverse, useful)
-theme_set(theme_bw())
+theme_set(theme_classic())
 
 if(Sys.info()['user'] == "tombearpark"){
   root <- "/Users/tombearpark/Dropbox/"  
@@ -80,7 +80,7 @@ reg8 <- feols(data = df ,
               # ssc = ssc(adj = TRUE, fixef.K = "full")
               )
 
-etable(reg0, reg1, reg2, reg3, reg8, reg9, 
+etable(reg0, reg1, reg2, reg3, reg8, 
        fitstat = c("n", "r2", "wr2", "wald", "f.stat", "aic", "bic", "rmse"))
 
 bind_rows(

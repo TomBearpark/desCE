@@ -1,6 +1,6 @@
 # Simulation to show why covariate selection on outcomes model doesn't work
 
-pacman::p_load(MASS, fixest, tidyverse, broom, furrr, glmnet)
+pacman::p_load(MASS, fixest, tidyverse, broom, furrr, glmnet, latex2exp)
 plan(multisession, workers = 6)
 theme_set(theme_bw())
 if(Sys.info()['user'] == "tombearpark"){
@@ -61,6 +61,15 @@ trends.xy <- left_join(
 ) 
 covs <- trends.xy %>% summarize(cov.trends = cov(x, y))
 
+feols(y~x, trends.xy)
+
+trends.xy %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", alpha = .2) + 
+  xlab("Country specific linear trend in Temperature") + 
+  ylab("Country specific linear trend in GDP-PC growth rate")
+ggsave(paste0(dir.out, "trends_scatter.png"), height = 4, width = 6)
 # funcs -------------------------------------------------------------------
 
 run_sim <- function(sim.i, 
@@ -194,7 +203,7 @@ get_cv_winners <- function(sim.df){
 
 # globals -----------------------------------------------------------------
 
-Nt   <- 30
+Nt   <- 40
 Ni   <- 100
 
 #  Show cv doesn't work in reasonable case ------------------------------
@@ -242,7 +251,9 @@ quantiles_95 <- function(x) {
 get_cv_winners(sim6)
 
 p1 <- map_dfr(
-  c('yx.selected', 'x.selected'), 
+  c('yx.selected'
+    # , 'x.selected'
+    ), 
   function(v){
     plot.df %>% 
       filter(model == .data[[v]]) %>% 
@@ -264,8 +275,9 @@ p1 <- map_dfr(
                           rule == "x.selected" ~ "CV - Treatment only",
                           .default = rule)) %>% 
   mutate(rule = fct_relevel(rule, c("CV - Outcome only (NPS)" , 
-                                    "Lasso - Outcome only",
-                                    "CV - Treatment only"))
+                                    "Lasso - Outcome only"
+                                    # ,"CV - Treatment only"
+                                    ))
                                     # "CV - Double Selection", 
                                     ,
                                     # "Lasso - Double selection"))
@@ -275,16 +287,19 @@ p1 <- map_dfr(
   geom_vline(xintercept = beta, color = 'red')  +
   geom_vline(aes(xintercept = mu)) + 
   facet_wrap(~rule) +
-  xlab("Beta Estimate")
+  xlab(TeX("$\\hat{\\beta}$"))
 p1
-ggsave(paste0(dir.out, "trend_singleCV_sim.png"), height = 2, width = 6)
+ggsave(paste0(dir.out, "trend_singleCV_sim.png"), height = 2, width = 5)
 
 
 
 # Double selection 
 
 p2 <- map_dfr(
-  c('d.selected'), 
+  c('d.selected'
+    # , 'x.selected'
+    )
+  , 
   function(v){
     plot.df %>% 
       filter(model == .data[[v]]) %>% 
@@ -316,10 +331,10 @@ p2 <- map_dfr(
   geom_density(aes(x = estimate))+
   geom_vline(xintercept = beta, color = 'red')  +
   geom_vline(aes(xintercept = mu)) + 
-  facet_wrap(~rule) +
-  xlab("Beta Estimate") + 
-  xlim(layer_scales(p1)$x$range$range)
+  facet_wrap(~rule, scales ='free') +
+  xlab(TeX("$\\hat{\\beta}$")) 
+  # xlim(layer_scales(p1)$x$range$range)
 
 p2
-ggsave(paste0(dir.out, "trend_double_sim.png"), height = 2, width = 4)
+ggsave(paste0(dir.out, "trend_double_sim.png"), height = 2, width = 5)
 

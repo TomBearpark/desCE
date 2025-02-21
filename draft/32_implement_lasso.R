@@ -4,7 +4,7 @@
 if(!require(pacman)) install.packages('pacman')
 if(!require(useful)) devtools::install_github("TomBearpark/useful")
 pacman::p_load(fixest, tidyverse, janitor, broom, useful, glmnet)
-theme_set(theme_bw())
+theme_set(theme_classic())
 
 if (Sys.info()['user'] == "tombearpark"){
   root <- "/Users/tombearpark/Dropbox/"  
@@ -185,20 +185,24 @@ rfs <- rf.ml %>% mutate(type = "solid") %>%
 
 
 rfs %>% 
+  rename(Model = id) %>% 
   ggplot() + 
-  geom_line(aes(x = temp, y = response, color = id, linetype = type))  + 
-  geom_ribbon(data = rf.ml, aes(x = temp, ymin = lower, ymax = upper, 
+  geom_hline(yintercept = 0, color = "grey", alpha = 0.9)+
+  
+  geom_ribbon(data = rf.ml, aes(x = temp, ymin = lower, ymax = upper,
                                 fill = id), alpha = .5) +
-  scale_color_manual(values = c("lightblue", "grey", "red", "green")) + 
-  scale_fill_manual(values = c('lightblue', "grey"), guide = 'none') + 
+  geom_line(aes(x = temp, y = response, color = Model, linetype = type))  + 
+  scale_color_manual(values = c("black", "black", "red", "green")) + 
+  scale_fill_manual(values = c('blue', "blue"), guide = 'none') + 
   scale_linetype_manual(values = c("dashed", "solid"), guide = 'none') +
   facet_wrap(~facet) + 
-  xlab("Temperature (C)") 
+  xlab("Temperature (C)")  + 
+  theme(legend.position = 'none')
 
-# ggsave(paste0(dir.out, "double_selection_rf.png"), height = 3, width = 7)
+ggsave(paste0(dir.out, "double_selection_rf.png"), height = 3, width = 7)
 
 
-# predicted values for USA and CHN under each model -----------------------
+# predicted values for GBR and CHN under each model -----------------------
 
 df$pred.dml  <- predict(m.dml.min)
 df$pred.nps  <- predict(reg0)
@@ -229,19 +233,22 @@ df$pred.bhmX  <- predict(regX2)
 df$pred.npsX  <- predict(regX0)
 
 
-country.toplot <- "GBR"
+fixef(regX1)$`iso[[time1]]`[["CHN"]]
+
+
+country.toplot <- c("GBR", "CHN")
 df %>% 
-  filter(iso == !!country.toplot) %>% 
+  filter(iso %in% c(country.toplot, "CHN")) %>% 
   select(iso, year, y, starts_with("pred")) %>% 
   pivot_longer(starts_with("pred")) %>% 
   mutate(var = ifelse(str_detect(name, "X"), "X", "Y")) %>% 
   mutate(name = str_remove_all(name, "X")) %>% 
-  bind_rows(df %>% filter(iso == !!country.toplot) %>% 
-              select(year, Y="y", X="x1") %>% 
+  bind_rows(df %>% filter(iso %in% !!country.toplot) %>% 
+              select(year, Y="y", X="x1", iso) %>% 
               pivot_longer(c(Y, X)) %>% mutate(var = name) %>% 
               mutate(name = "Value") 
   ) %>% 
   ggplot() + 
   geom_line(aes(x = year, y = value, color = name)) + 
-  facet_wrap(~var, scales = 'free') + 
+  facet_wrap(~var+iso, scales = 'free') + 
   ggtitle(country.toplot)
